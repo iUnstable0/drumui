@@ -1,12 +1,10 @@
 import {createMemo, createSignal, onCleanup} from "solid-js";
 import {createStore} from "solid-js/store";
-import {DrumPlaybackEngine} from "./audio/DrumPlaybackEngine";
+import {createPlaybackEngine} from "./audio/PlaybackEngine";
 import {createDefaultLoopRange, halfBeatMsFromBpm, snapLoopRangeToBeatGrid} from "./audio/playbackMath";
-import {PreviewTransport} from "./hardware/transport";
 import {ANALOG_808_KIT, cloneLaneStateMap, createDefaultLaneState, createLaneStatusMap, getKitPiece} from "./kit/analog808";
 import {createActiveLane, moveActiveLane} from "./laneTargeting";
-import {isTauriRuntime, pickMidiPath, readMidiBytesFromPath} from "./midi/fileAccess";
-import {parseMidiBytes} from "./midi/parseMidi";
+import {pickMidiPath} from "./midi/fileAccess";
 import {useTauriMidiDrop} from "./midi/useTauriMidiDrop";
 import type {ActiveInputSource, KitPieceId, LaneState, LightEvent, MidiHit, ParsedMidi, PlaybackControls, PlaybackViewState} from "./types";
 import {KIT_PIECE_IDS} from "./types";
@@ -44,15 +42,14 @@ export function useDrumTrainer() {
 	});
 	const [laneStates, setLaneStates] = createStore(createDefaultLaneState());
 
-	let fileInput: HTMLInputElement | undefined;
 	const lightTimers: Partial<Record<KitPieceId, number>> = {};
 	const manualPadTimers: Partial<Record<KitPieceId, number>> = {};
-	const previewTransport = new PreviewTransport(handleLightEvents);
-	const engine = new DrumPlaybackEngine(ANALOG_808_KIT, previewTransport, {
+	const engine = createPlaybackEngine({
 		onPosition: (positionMs) => setPlayback((state) => ({...state, positionMs})),
 		onPlayingChange: (isPlaying) => setPlayback((state) => ({...state, isPlaying})),
 		onEnded: () => setPlayback((state) => ({...state, isPlaying: false})),
 		onError: setLoadError,
+		onLightEvents: handleLightEvents,
 	}, cloneLaneStateMap(laneStates));
 
 	const canPlay = () => Boolean(session()?.hits.length) && !isLoading();
@@ -69,24 +66,37 @@ export function useDrumTrainer() {
 		Object.values(manualPadTimers).forEach((timer) => timer && window.clearTimeout(timer));
 	});
 
-	async function loadMidiSource(label: string, readBytes: Promise<Uint8Array>) {
-		engine.stop();
+	function reportEngineError(error: unknown) {
+		setLoadError(getErrorMessage(error));
+	}
+
+	function runEngineTask(task: Promise<unknown> | unknown) {
+		void Promise.resolve(task).catch(reportEngineError);
+	}
+
+	async function applySession(label: string, parsed: ParsedMidi) {
+		const lastHit = parsed.hits[parsed.hits.length - 1];
+		const defaultLoop = createDefaultLoopRange(parsed.durationMs, parsed.bpm, lastHit?.timeMs);
+		setSession(parsed);
+		engine.setSession(parsed);
+		setPlayback({isPlaying: false, positionMs: 0, durationMs: parsed.durationMs});
+		updateControls({loopStartMs: defaultLoop.startMs, loopEndMs: defaultLoop.endMs});
+		if (parsed.hits.length === 0) setLoadError("No mapped drum notes were found in this MIDI file.");
+		setFileLabel(label);
+	}
+
+	async function loadMidiFile(path: string) {
 		setIsLoading(true);
 		setLoadError(null);
-		setFileLabel(label);
+		setFileLabel(path);
 		setRecentEvents([]);
 		setPlaybackLights(defaultLights());
 		setManualPadLights(defaultLights());
 		setTimelinePreviewLights(defaultLights());
 		try {
-			const parsed = parseMidiBytes(await readBytes, label, ANALOG_808_KIT);
-			const lastHit = parsed.hits[parsed.hits.length - 1];
-			const defaultLoop = createDefaultLoopRange(parsed.durationMs, parsed.bpm, lastHit?.timeMs);
-			setSession(parsed);
-			engine.setSession(parsed);
-			setPlayback({isPlaying: false, positionMs: 0, durationMs: parsed.durationMs});
-			updateControls({loopStartMs: defaultLoop.startMs, loopEndMs: defaultLoop.endMs});
-			if (parsed.hits.length === 0) setLoadError("No mapped drum notes were found in this MIDI file.");
+			await Promise.resolve(engine.stop());
+			if (!engine.loadMidiFile) throw new Error("Native audio engine is unavailable.");
+			await applySession(path, await engine.loadMidiFile(path));
 		} catch (error) {
 			setSession(null);
 			setPlayback({isPlaying: false, positionMs: 0, durationMs: 0});
@@ -97,26 +107,18 @@ export function useDrumTrainer() {
 	}
 
 	function loadFile(path: string) {
-		void loadMidiSource(path, readMidiBytesFromPath(path));
+		void loadMidiFile(path);
 	}
 
 	async function pickFile() {
 		if (isLoading()) return;
 		const path = await pickMidiPath();
 		if (path) loadFile(path);
-		else if (!isTauriRuntime()) fileInput?.click();
-	}
-
-	async function handleBrowserFile(event: Event) {
-		const input = event.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
-		await loadMidiSource(file.name, file.arrayBuffer().then((buffer) => new Uint8Array(buffer)));
-		input.value = "";
 	}
 
 	function clearSession() {
-		engine.stop();
+		runEngineTask(engine.stop());
+		engine.setSession(null);
 		setSession(null);
 		setFileLabel(null);
 		setLoadError(null);
@@ -129,7 +131,7 @@ export function useDrumTrainer() {
 
 	async function togglePlayback() {
 		if (!canPlay()) return;
-		if (playback().isPlaying) engine.pause();
+		if (playback().isPlaying) runEngineTask(engine.pause());
 		else await engine.play(playback().positionMs, controlsSnapshot()).catch((error) => setLoadError(getErrorMessage(error)));
 	}
 
@@ -184,7 +186,7 @@ export function useDrumTrainer() {
 
 		const stepMs = halfBeatMsFromBpm(currentSession.bpm);
 		const nextPositionMs = clamp(playback().positionMs + direction * stepMs, 0, currentSession.durationMs);
-		engine.seek(nextPositionMs, controlsSnapshot());
+		runEngineTask(engine.seek(nextPositionMs, controlsSnapshot()));
 	}
 
 	function toggleActiveMute() {
@@ -211,7 +213,7 @@ export function useDrumTrainer() {
 			return;
 		}
 		setManualPadLights((previous) => ({...previous, [pieceId]: 1}));
-		engine.audition(pieceId);
+		runEngineTask(engine.audition(pieceId));
 	}
 
 	function releasePad(pieceId: KitPieceId) {
@@ -234,7 +236,7 @@ export function useDrumTrainer() {
 			return;
 		}
 		setManualPadLights((previous) => ({...previous, [pieceId]: 1}));
-		engine.audition(pieceId);
+		runEngineTask(engine.audition(pieceId));
 		manualPadTimers[pieceId] = window.setTimeout(() => releasePad(pieceId), getKitPiece(pieceId).lightDurationMs);
 	}
 
@@ -277,10 +279,6 @@ export function useDrumTrainer() {
 		laneStates,
 		canPlay,
 		controls: controlsSnapshot,
-		setFileInput: (element: HTMLInputElement) => {
-			fileInput = element;
-		},
-		handleBrowserFile,
 		pickFile,
 		clearSession,
 		togglePlayback,
@@ -300,9 +298,9 @@ export function useDrumTrainer() {
 		adjustActiveVolume,
 		pressPad,
 		releasePad,
-		seek: (positionMs: number) => engine.seek(positionMs, controlsSnapshot()),
-		restart: () => engine.seek(0, controlsSnapshot()),
-		stop: () => engine.stop(),
+		seek: (positionMs: number) => runEngineTask(engine.seek(positionMs, controlsSnapshot())),
+		restart: () => runEngineTask(engine.seek(0, controlsSnapshot())),
+		stop: () => runEngineTask(engine.stop()),
 		audition: triggerPad,
 		auditionLane,
 	};

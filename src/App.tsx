@@ -49,7 +49,6 @@ function App() {
 				"--kit-pane-height": `${layout.kitHeight()}px`,
 			}}
 		>
-			<input ref={trainer.setFileInput} class="file-input" type="file" accept=".mid,.midi" onChange={trainer.handleBrowserFile}/>
 			<FileLibrary session={trainer.session()} fileLabel={trainer.fileLabel()} error={trainer.loadError()} isLoading={trainer.isLoading()} collapsed={layout.libraryCollapsed()} onToggleCollapse={layout.toggleLibraryCollapsed} onPick={trainer.pickFile} onClear={trainer.clearSession}/>
 			<div
 				class="resize-handle resize-handle--vertical"

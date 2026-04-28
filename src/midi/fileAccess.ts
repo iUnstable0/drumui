@@ -1,7 +1,7 @@
-import {invoke} from "@tauri-apps/api/core";
 import {open} from "@tauri-apps/plugin-dialog";
 
 export function isTauriRuntime(): boolean {
+	if (typeof window === "undefined") return false;
 	return (window as unknown as {__TAURI_INTERNALS__?: unknown}).__TAURI_INTERNALS__ !== undefined;
 }
 
@@ -15,9 +15,4 @@ export async function pickMidiPath(): Promise<string | null> {
 	});
 
 	return typeof selected === "string" ? selected : null;
-}
-
-export async function readMidiBytesFromPath(path: string): Promise<Uint8Array> {
-	const bytes = await invoke<number[]>("read_midi_file", {path});
-	return new Uint8Array(bytes);
 }

@@ -16,7 +16,7 @@ import {
 } from "../audio/playbackMath";
 
 describe("playback math", () => {
-	it("scales original MIDI time into Tone transport seconds", () => {
+	it("scales original MIDI time into transport seconds", () => {
 		expect(originalMsToTransportSeconds(4000, 2)).toBe(2);
 		expect(transportSecondsToOriginalMs(2, 0.5)).toBe(1000);
 	});

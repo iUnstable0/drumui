@@ -17,10 +17,8 @@
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2.5.3",
-    "@tonejs/midi": "^2.0.28",
     "lucide-solid": "^1.11.0",
-    "solid-js": "^1.9.12",
-    "tone": "^15.1.22"
+    "solid-js": "^1.9.12"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.1",

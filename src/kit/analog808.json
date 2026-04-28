@@ -1,0 +1,116 @@
+{
+  "id": "analog-808",
+  "name": "Analog 808",
+  "source": "FreePats Synthesizer Percussion",
+  "license": "Creative Commons CC0 1.0",
+  "pieces": [
+    {
+      "id": "kick",
+      "label": "Kick",
+      "shortLabel": "K",
+      "midiNotes": [35, 36],
+      "sampleUrl": "/kits/analog-808/samples/kick.wav",
+      "color": "#ff6b5f",
+      "lightDurationMs": 180,
+      "x": 50,
+      "y": 78,
+      "size": 116
+    },
+    {
+      "id": "snare",
+      "label": "Snare",
+      "shortLabel": "S",
+      "midiNotes": [38, 40],
+      "sampleUrl": "/kits/analog-808/samples/snare.wav",
+      "color": "#f2c14e",
+      "lightDurationMs": 150,
+      "x": 35,
+      "y": 60,
+      "size": 90
+    },
+    {
+      "id": "clap",
+      "label": "Clap / Rim",
+      "shortLabel": "C",
+      "midiNotes": [37, 39, 75],
+      "sampleUrl": "/kits/analog-808/samples/clap.wav",
+      "color": "#f78fb3",
+      "lightDurationMs": 130,
+      "x": 24,
+      "y": 78,
+      "size": 68
+    },
+    {
+      "id": "closedHat",
+      "label": "Closed Hat",
+      "shortLabel": "CH",
+      "midiNotes": [22, 42, 44],
+      "sampleUrl": "/kits/analog-808/samples/closed-hat.wav",
+      "color": "#63d8b4",
+      "lightDurationMs": 90,
+      "x": 18,
+      "y": 48,
+      "size": 84
+    },
+    {
+      "id": "openHat",
+      "label": "Open Hat",
+      "shortLabel": "OH",
+      "midiNotes": [26, 46, 54],
+      "sampleUrl": "/kits/analog-808/samples/open-hat.wav",
+      "color": "#5ed7f2",
+      "lightDurationMs": 220,
+      "x": 26,
+      "y": 24,
+      "size": 76
+    },
+    {
+      "id": "lowTom",
+      "label": "Floor Tom",
+      "shortLabel": "FT",
+      "midiNotes": [41, 43],
+      "sampleUrl": "/kits/analog-808/samples/low-tom.wav",
+      "color": "#9f8cff",
+      "lightDurationMs": 170,
+      "x": 70,
+      "y": 64,
+      "size": 88
+    },
+    {
+      "id": "midTom",
+      "label": "Rack Tom",
+      "shortLabel": "RT",
+      "midiNotes": [45, 47, 48, 50],
+      "sampleUrl": "/kits/analog-808/samples/mid-tom.wav",
+      "color": "#b6e35d",
+      "lightDurationMs": 160,
+      "x": 52,
+      "y": 42,
+      "size": 86
+    },
+    {
+      "id": "crash",
+      "label": "Crash",
+      "shortLabel": "CR",
+      "midiNotes": [49, 52, 55, 57],
+      "sampleUrl": "/kits/analog-808/samples/crash.wav",
+      "color": "#ff9f43",
+      "lightDurationMs": 320,
+      "x": 36,
+      "y": 24,
+      "size": 92
+    },
+    {
+      "id": "ride",
+      "label": "Ride",
+      "shortLabel": "RD",
+      "midiNotes": [51, 53, 59],
+      "sampleUrl": "/kits/analog-808/samples/ride.wav",
+      "color": "#d9a34f",
+      "lightDurationMs": 340,
+      "x": 78,
+      "y": 26,
+      "size": 92
+    }
+  ]
+}

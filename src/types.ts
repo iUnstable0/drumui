@@ -66,6 +66,7 @@ export interface MidiTrackSummary {
 }
 
 export interface ParsedMidi {
+	sessionId?: string;
 	label: string;
 	name: string;
 	durationMs: number;
