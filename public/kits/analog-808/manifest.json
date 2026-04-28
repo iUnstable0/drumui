@@ -1,0 +1,19 @@
+{
+  "id": "analog-808",
+  "name": "Analog 808",
+  "source": "FreePats Synthesizer Percussion",
+  "sourceUrl": "https://freepats.zenvoid.org/Percussion/electric-percussion.html",
+  "license": "Creative Commons CC0 1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "samples": {
+    "kick": "samples/kick.wav",
+    "snare": "samples/snare.wav",
+    "clap": "samples/clap.wav",
+    "closedHat": "samples/closed-hat.wav",
+    "openHat": "samples/open-hat.wav",
+    "lowTom": "samples/low-tom.wav",
+    "midTom": "samples/mid-tom.wav",
+    "crash": "samples/crash.wav",
+    "ride": "samples/ride.wav"
+  }
+}

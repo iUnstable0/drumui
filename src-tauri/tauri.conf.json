@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "drumui",
-        "width": 800,
-        "height": 600
+        "title": "Drum Player",
+        "width": 720,
+        "height": 560
       }
     ],
     "security": {
