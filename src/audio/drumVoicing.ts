@@ -1,5 +1,5 @@
-import type {KitPiece, KitPieceId} from "../types";
-import {clamp, noteNameFromMidi} from "../utils/format";
+import type { KitPiece, KitPieceId } from "../types";
+import { clamp, noteNameFromMidi } from "../utils/format";
 
 export const DEFAULT_SAMPLER_MIDI_NOTE = 60;
 

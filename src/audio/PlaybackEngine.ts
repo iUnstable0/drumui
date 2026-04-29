@@ -1,5 +1,5 @@
-import type {KitPieceId, LaneStateMap, LightEvent, ParsedMidi, PlaybackControls} from "../types";
-import {NativePlaybackEngine} from "./NativePlaybackEngine";
+import type { KitPieceId, LaneStateMap, LightEvent, ParsedMidi, PlaybackControls } from "../types";
+import { NativePlaybackEngine } from "./NativePlaybackEngine";
 
 export interface PlaybackEngineCallbacks {
 	onPosition: (positionMs: number) => void;
@@ -7,6 +7,7 @@ export interface PlaybackEngineCallbacks {
 	onEnded: () => void;
 	onError: (message: string) => void;
 	onLightEvents: (events: LightEvent[]) => void;
+	onMetronomeTick: () => void;
 }
 
 export interface PlaybackEngine {
@@ -15,16 +16,13 @@ export interface PlaybackEngine {
 	setLaneStates: (laneStates: LaneStateMap) => void;
 	setControls: (controls: PlaybackControls) => void;
 	play: (fromMs: number, controls?: PlaybackControls) => Promise<void> | void;
-	pause: () => Promise<number | void> | number | void;
+	pause: () => Promise<number | undefined> | number | undefined;
 	stop: (resetPosition?: boolean) => Promise<void> | void;
 	seek: (positionMs: number, controls?: PlaybackControls) => Promise<void> | void;
 	audition: (pieceId: KitPieceId) => Promise<void> | void;
 	dispose: () => void;
 }
 
-export function createPlaybackEngine(
-	callbacks: PlaybackEngineCallbacks,
-	laneStates: LaneStateMap,
-): PlaybackEngine {
+export function createPlaybackEngine(callbacks: PlaybackEngineCallbacks, laneStates: LaneStateMap): PlaybackEngine {
 	return new NativePlaybackEngine(callbacks, laneStates);
 }

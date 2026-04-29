@@ -1,6 +1,6 @@
-import {describe, expect, it} from "vitest";
-import {getCanonicalSamplerNote, getChokeTargets, normalizeHitVelocity, velocityToGain} from "../audio/drumVoicing";
-import {ANALOG_808_KIT} from "../kit/analog808";
+import { describe, expect, it } from "vitest";
+import { getCanonicalSamplerNote, getChokeTargets, normalizeHitVelocity, velocityToGain } from "../audio/drumVoicing";
+import { ANALOG_808_KIT } from "../kit/analog808";
 
 describe("drum playback voicing", () => {
 	it("clamps MIDI velocity into the audio normal range", () => {

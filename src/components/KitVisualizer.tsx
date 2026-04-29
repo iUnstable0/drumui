@@ -1,7 +1,7 @@
-import {For} from "solid-js";
-import {KEYBOARD_DRUM_TRIGGER_HINTS} from "../keyboardShortcuts";
-import type {DrumKit, KitPieceId, LaneStatusMap} from "../types";
-import {ShortcutKeycap} from "./ShortcutKeycap";
+import { For } from "solid-js";
+import { KEYBOARD_DRUM_TRIGGER_HINTS } from "../keyboardShortcuts";
+import type { DrumKit, KitPieceId, LaneStatusMap } from "../types";
+import { ShortcutKeycap } from "./ShortcutKeycap";
 
 interface KitVisualizerProps {
 	kit: DrumKit;
@@ -51,7 +51,7 @@ export function KitVisualizer(props: KitVisualizerProps) {
 									onPointerEnter={() => props.onPointerLane(piece.id)}
 									onPointerMove={() => props.onPointerLane(piece.id)}
 								>
-									<ShortcutKeycap hint={shortcut} class="shortcut-keycap--kit-piece"/>
+									<ShortcutKeycap hint={shortcut} class="shortcut-keycap--kit-piece" />
 									<span>{piece.shortLabel}</span>
 									<small>{piece.label}</small>
 								</button>

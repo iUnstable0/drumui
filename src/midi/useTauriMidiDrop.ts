@@ -1,6 +1,6 @@
-import {getCurrentWebview} from "@tauri-apps/api/webview";
-import {onCleanup, onMount} from "solid-js";
-import {isTauriRuntime} from "./fileAccess";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { onCleanup, onMount } from "solid-js";
+import { isTauriRuntime } from "./fileAccess";
 
 export function useTauriMidiDrop(onDrop: (path: string) => void, setDragOver: (value: boolean) => void) {
 	onMount(() => {

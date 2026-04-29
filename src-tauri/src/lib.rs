@@ -5,15 +5,16 @@ mod midi;
 
 use audio::AudioBackend;
 use dto::{
-    AudioDiagnosticsDto, CompiledSession, LaneStateDto, LaneStateMapDto, PieceId,
-    PlaybackControlsDto, PlaybackControlsPatchDto, PlaybackStatusDto, SessionDto,
+    AudioDiagnosticsDto, CompiledSession, LaneStateMapDto, PieceId, PlaybackControlsDto,
+    PlaybackControlsPatchDto, PlaybackStatusDto, SessionDto,
 };
 use tauri::{Manager, State};
+
+const MAX_MIDI_BYTES: u64 = 8 * 1024 * 1024;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(AudioBackend::new(app.handle().clone()));
@@ -28,7 +29,6 @@ pub fn run() {
             audio_seek,
             audio_set_controls,
             audio_set_lane_states,
-            audio_set_lane_state,
             audio_audition,
             audio_get_diagnostics,
         ])
@@ -42,6 +42,15 @@ fn audio_load_midi_file(
     path: String,
 ) -> Result<SessionDto, String> {
     ensure_midi_path(&path)?;
+    let metadata = std::fs::metadata(&path)
+        .map_err(|error| format!("Could not stat the MIDI file: {error}"))?;
+    if metadata.len() > MAX_MIDI_BYTES {
+        return Err(format!(
+            "MIDI file is too large ({} bytes; max {} bytes).",
+            metadata.len(),
+            MAX_MIDI_BYTES
+        ));
+    }
     let bytes =
         std::fs::read(&path).map_err(|error| format!("Could not read the MIDI file: {error}"))?;
     let dto = midi::parse_midi_bytes(&bytes, &path)?;
@@ -99,15 +108,6 @@ fn audio_set_lane_states(
     lane_states: LaneStateMapDto,
 ) -> Result<PlaybackStatusDto, String> {
     state.set_lane_states(lane_states)
-}
-
-#[tauri::command]
-fn audio_set_lane_state(
-    state: State<'_, AudioBackend>,
-    piece_id: PieceId,
-    lane_state: LaneStateDto,
-) -> Result<PlaybackStatusDto, String> {
-    state.set_lane_state(piece_id, lane_state)
 }
 
 #[tauri::command]

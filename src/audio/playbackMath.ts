@@ -1,5 +1,5 @@
-import type {PlaybackControls} from "../types";
-import {clamp} from "../utils/format";
+import type { PlaybackControls } from "../types";
+import { clamp } from "../utils/format";
 
 export const MIN_SPEED = 0.25;
 export const MAX_SPEED = 2;
@@ -23,7 +23,12 @@ export interface TransportPositionClock {
 	getSecondsAtTime(time: number): number;
 }
 
-export function playbackPositionMsAtAudioTime(transport: TransportPositionClock, audioTimeSeconds: number, speed: number, durationMs: number): number {
+export function playbackPositionMsAtAudioTime(
+	transport: TransportPositionClock,
+	audioTimeSeconds: number,
+	speed: number,
+	durationMs: number,
+): number {
 	return clamp(
 		transportSecondsToOriginalMs(transport.getSecondsAtTime(audioTimeSeconds), speed),
 		0,
@@ -66,31 +71,31 @@ export function snapLoopRangeToBeatGrid(durationMs: number, loopStartMs: number,
 	const duration = Math.max(0, Number.isFinite(durationMs) ? durationMs : 0);
 	const requestedStart = Number.isFinite(loopStartMs) ? loopStartMs : 0;
 	const requestedEnd = Number.isFinite(loopEndMs) ? loopEndMs : duration;
-	if (duration <= 0) return {startMs: 0, endMs: 0};
-	if (requestedStart <= 0 && requestedEnd >= duration) return {startMs: 0, endMs: duration};
+	if (duration <= 0) return { startMs: 0, endMs: 0 };
+	if (requestedStart <= 0 && requestedEnd >= duration) return { startMs: 0, endMs: duration };
 
 	const step = halfBeatMsFromBpm(bpm);
 	const max = loopGridMaxMs(duration, bpm);
 	const minLength = Math.min(max, loopMinLengthMsFromStep(step));
 
-	if (max <= 0 || minLength <= 0) return {startMs: 0, endMs: duration};
+	if (max <= 0 || minLength <= 0) return { startMs: 0, endMs: duration };
 
 	const start = clamp(snapMsToGrid(requestedStart, step), 0, Math.max(0, max - minLength));
 	const end = clamp(snapMsToGrid(requestedEnd, step), start + minLength, max);
-	return {startMs: start, endMs: end};
+	return { startMs: start, endMs: end };
 }
 
 export function createDefaultLoopRange(durationMs: number, bpm: number, lastHitTimeMs?: number) {
 	void bpm;
 	void lastHitTimeMs;
-	return {startMs: 0, endMs: Math.max(0, Number.isFinite(durationMs) ? durationMs : 0)};
+	return { startMs: 0, endMs: Math.max(0, Number.isFinite(durationMs) ? durationMs : 0) };
 }
 
 export function sanitizeLoopRange(durationMs: number, loopStartMs: number, loopEndMs: number) {
 	const duration = Math.max(0, durationMs);
 	const start = clamp(loopStartMs, 0, Math.max(0, duration - MIN_LOOP_LENGTH_MS));
 	const end = clamp(loopEndMs, start + MIN_LOOP_LENGTH_MS, duration);
-	return {startMs: start, endMs: end};
+	return { startMs: start, endMs: end };
 }
 
 export function shouldLoop(controls: PlaybackControls, durationMs: number): boolean {

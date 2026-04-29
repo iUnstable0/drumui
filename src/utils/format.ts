@@ -15,6 +15,14 @@ export function formatTime(milliseconds: number): string {
 	return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+export function formatTimecode(milliseconds: number): string {
+	const ms = Number.isFinite(milliseconds) ? Math.max(0, milliseconds) : 0;
+	const minutes = Math.floor(ms / 60000);
+	const seconds = Math.floor((ms % 60000) / 1000);
+	const cs = Math.floor((ms % 1000) / 10);
+	return `${minutes}:${seconds.toString().padStart(2, "0")}.${cs.toString().padStart(2, "0")}`;
+}
+
 export function formatPercent(value: number): string {
 	return `${Math.round(value * 100)}%`;
 }

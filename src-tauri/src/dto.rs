@@ -161,7 +161,7 @@ impl Default for PlaybackControlsDto {
             loop_end_ms: 4000.0,
             count_in_enabled: false,
             metronome_enabled: false,
-            master_volume: 0.85,
+            master_volume: 0.6,
         }
     }
 }
@@ -250,11 +250,17 @@ pub struct LightPulseDto {
     pub at_position_ms: f64,
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetronomeTickDto {
+    pub at_position_ms: f64,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct CompiledHit {
-    pub time_ms: f64,
-    pub note: u8,
-    pub velocity: f32,
+	pub time_ms: f64,
+	pub note: u8,
+	pub velocity: f32,
     pub piece_id: PieceId,
 }
 

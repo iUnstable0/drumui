@@ -1,7 +1,7 @@
-import {invoke} from "@tauri-apps/api/core";
-import {listen} from "@tauri-apps/api/event";
-import type {PlaybackEngine, PlaybackEngineCallbacks} from "./PlaybackEngine";
-import type {KitPieceId, LaneStateMap, LightEvent, ParsedMidi, PlaybackControls} from "../types";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import type { KitPieceId, LaneStateMap, LightEvent, ParsedMidi, PlaybackControls } from "../types";
+import type { PlaybackEngine, PlaybackEngineCallbacks } from "./PlaybackEngine";
 
 type Unlisten = () => void;
 
@@ -23,6 +23,10 @@ interface NativeLightPulse {
 	intensity: number;
 	color: string;
 	durationMs: number;
+	atPositionMs: number;
+}
+
+interface NativeMetronomeTick {
 	atPositionMs: number;
 }
 
@@ -57,15 +61,18 @@ export class NativePlaybackEngine implements PlaybackEngine {
 		void listen<NativeLightPulse[]>("audio:lights", (event) => this.handleLights(event.payload))
 			.then((unlisten) => this.unlisteners.push(unlisten))
 			.catch((error: unknown) => this.callbacks.onError(String(error)));
+		void listen<NativeMetronomeTick[]>("audio:metronome-ticks", (event) => this.handleMetronomeTicks(event.payload))
+			.then((unlisten) => this.unlisteners.push(unlisten))
+			.catch((error: unknown) => this.callbacks.onError(String(error)));
 		void listen<string>("audio:error", (event) => this.callbacks.onError(event.payload))
 			.then((unlisten) => this.unlisteners.push(unlisten))
 			.catch((error: unknown) => this.callbacks.onError(String(error)));
 	}
 
 	async loadMidiFile(path: string): Promise<ParsedMidi> {
-		const session = await invoke<ParsedMidi>("audio_load_midi_file", {path});
+		const session = await invoke<ParsedMidi>("audio_load_midi_file", { path });
 		this.session = session;
-		this.status = {...DEFAULT_STATUS, durationMs: session.durationMs, loopEndMs: session.durationMs};
+		this.status = { ...DEFAULT_STATUS, durationMs: session.durationMs, loopEndMs: session.durationMs };
 		this.callbacks.onPlayingChange(false);
 		this.callbacks.onPosition(0);
 		return session;
@@ -75,21 +82,23 @@ export class NativePlaybackEngine implements PlaybackEngine {
 		const previousSessionId = this.session?.sessionId;
 		this.session = session;
 		if (!session && previousSessionId) {
-			void invoke("audio_clear_session", {sessionId: previousSessionId}).catch((error: unknown) => this.callbacks.onError(String(error)));
+			void invoke("audio_clear_session", { sessionId: previousSessionId }).catch((error: unknown) =>
+				this.callbacks.onError(String(error)),
+			);
 			this.stopInterpolation();
 		}
 	}
 
 	setLaneStates(laneStates: LaneStateMap) {
 		this.laneStates = laneStates;
-		void invoke<NativePlaybackStatus>("audio_set_lane_states", {laneStates})
+		void invoke<NativePlaybackStatus>("audio_set_lane_states", { laneStates })
 			.then((status) => this.handleStatus(status))
 			.catch((error: unknown) => this.callbacks.onError(String(error)));
 	}
 
 	setControls(controls: PlaybackControls) {
 		this.controls = controls;
-		void invoke<NativePlaybackStatus>("audio_set_controls", {patch: controls})
+		void invoke<NativePlaybackStatus>("audio_set_controls", { patch: controls })
 			.then((status) => this.handleStatus(status))
 			.catch((error: unknown) => this.callbacks.onError(String(error)));
 	}
@@ -114,18 +123,18 @@ export class NativePlaybackEngine implements PlaybackEngine {
 	}
 
 	async stop(resetPosition = true) {
-		const status = await invoke<NativePlaybackStatus>("audio_stop", {resetPosition});
+		const status = await invoke<NativePlaybackStatus>("audio_stop", { resetPosition });
 		this.handleStatus(status);
 	}
 
 	async seek(positionMs: number, controls = this.controls ?? undefined) {
 		if (controls) this.controls = controls;
-		const status = await invoke<NativePlaybackStatus>("audio_seek", {positionMs});
+		const status = await invoke<NativePlaybackStatus>("audio_seek", { positionMs });
 		this.handleStatus(status);
 	}
 
 	async audition(pieceId: KitPieceId) {
-		await invoke("audio_audition", {pieceId, velocity: 1});
+		await invoke("audio_audition", { pieceId, velocity: 1 });
 	}
 
 	dispose() {
@@ -161,6 +170,12 @@ export class NativePlaybackEngine implements PlaybackEngine {
 		if (events.length > 0) this.callbacks.onLightEvents(events);
 	}
 
+	private handleMetronomeTicks(ticks: NativeMetronomeTick[]) {
+		for (let index = 0; index < ticks.length; index += 1) {
+			this.callbacks.onMetronomeTick();
+		}
+	}
+
 	private startInterpolation() {
 		if (this.rafId !== undefined) return;
 		const tick = () => {
@@ -170,9 +185,10 @@ export class NativePlaybackEngine implements PlaybackEngine {
 			}
 
 			const elapsedMs = performance.now() - this.statusReceivedAt;
-			const nextPosition = this.status.mode === "playing"
-				? Math.min(this.status.durationMs, this.status.positionMs + elapsedMs * this.status.speed)
-				: this.status.positionMs;
+			const nextPosition =
+				this.status.mode === "playing"
+					? Math.min(this.status.durationMs, this.status.positionMs + elapsedMs * this.status.speed)
+					: this.status.positionMs;
 			this.callbacks.onPosition(nextPosition);
 			this.rafId = window.requestAnimationFrame(tick);
 		};

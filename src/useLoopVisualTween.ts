@@ -1,4 +1,4 @@
-import {createEffect, createMemo, createSignal, onCleanup} from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 
 type HsvColor = {
 	h: number;
@@ -9,8 +9,8 @@ type HsvColor = {
 type LoopVisualVars = Record<`--${string}`, string>;
 
 const TWEEN_MS = 120;
-const INACTIVE: HsvColor = {h: 210, s: 3, v: 96};
-const ACTIVE: HsvColor = {h: 163, s: 54, v: 85};
+const INACTIVE: HsvColor = { h: 210, s: 3, v: 96 };
+const ACTIVE: HsvColor = { h: 163, s: 54, v: 85 };
 
 function clamp01(value: number): number {
 	return Math.max(0, Math.min(1, value));
@@ -65,7 +65,7 @@ function hsvToRgb(color: HsvColor) {
 }
 
 function colorString(color: HsvColor, alpha: number): string {
-	const {r, g, b} = hsvToRgb(color);
+	const { r, g, b } = hsvToRgb(color);
 	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 

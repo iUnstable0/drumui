@@ -1,6 +1,6 @@
-import {onCleanup} from "solid-js";
-import type {KitPieceId} from "./types";
-import {resolveKeyboardShortcut} from "./keyboardShortcuts";
+import { onCleanup } from "solid-js";
+import { resolveKeyboardShortcut } from "./keyboardShortcuts";
+import type { KitPieceId } from "./types";
 
 interface KeyboardShortcutHandlers {
 	onAdjustActiveVolume: (delta: number) => void;

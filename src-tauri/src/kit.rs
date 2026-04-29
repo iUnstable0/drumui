@@ -89,11 +89,15 @@ pub fn kit() -> &'static KitDto {
 }
 
 pub fn piece(piece_id: PieceId) -> &'static KitPieceDto {
+    // Each PieceId variant has a corresponding entry in the embedded analog808.json
+    // (verified by the loads_all_samples test). A missing entry would mean the
+    // bundled kit JSON is malformed and the binary should fail loudly.
+    #[allow(clippy::panic)]
     kit()
         .pieces
         .iter()
         .find(|piece| piece.id == piece_id)
-        .unwrap_or_else(|| panic!("missing kit metadata for {:?}", piece_id))
+        .unwrap_or_else(|| panic!("missing kit metadata for {piece_id:?}"))
 }
 
 pub fn note_to_piece(note: u8) -> Option<PieceId> {

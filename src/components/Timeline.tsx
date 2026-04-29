@@ -1,27 +1,32 @@
 import * as Slider from "@kobalte/core/slider";
-import {Maximize2, ZoomIn, ZoomOut} from "lucide-solid";
-import {createEffect, createMemo, createSignal, For, onCleanup, onMount, Show} from "solid-js";
-import {normalizeHitVelocity} from "../audio/drumVoicing";
-import {snapLoopRangeToBeatGrid} from "../audio/playbackMath";
+import { Maximize2, ZoomIn, ZoomOut } from "lucide-solid";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { normalizeHitVelocity } from "../audio/drumVoicing";
+import { snapLoopRangeToBeatGrid } from "../audio/playbackMath";
+import type { TimelineLoopDragMode } from "../timelineMath";
 import {
 	calculateAnchoredZoom,
 	clampTimelineScroll,
 	createTimelineGridLines,
 	createTimelineScale,
 	createTimelineTicks,
+	createZoomVelocityState,
 	DEFAULT_TIMELINE_ZOOM,
 	dragTimelineLoopRange,
+	formatBarsBeats,
 	getFollowScrollLeft,
+	getTimelineLoopMinLengthMs,
 	getTimelinePreviewHits,
+	getZoomVelocityMultiplier,
 	MAX_TIMELINE_ZOOM,
 	MIN_TIMELINE_ZOOM,
-	timeMsToX,
 	TIMELINE_ZOOM_STEP,
+	timeMsToX,
 	xToTimeMs,
+	zoomFromWheelDelta,
 } from "../timelineMath";
-import type {TimelineLoopDragMode} from "../timelineMath";
-import type {DrumKit, KitPieceId, LaneStatusMap, MidiHit, ParsedMidi, PlaybackControls} from "../types";
-import {clamp, formatPercent, formatTime} from "../utils/format";
+import type { DrumKit, KitPieceId, LaneStatusMap, MidiHit, ParsedMidi, PlaybackControls } from "../types";
+import { clamp, formatPercent, formatTimecode } from "../utils/format";
 
 interface TimelineProps {
 	session: ParsedMidi;
@@ -32,6 +37,7 @@ interface TimelineProps {
 	controls: PlaybackControls;
 	onSeek: (positionMs: number) => void;
 	onLoopChange: (startMs: number, endMs: number) => void;
+	onLoopEnabledChange: (enabled: boolean) => void;
 	onFocusLane: (pieceId: KitPieceId) => void;
 	onPointerLane: (pieceId: KitPieceId) => void;
 	onPreviewHits: (hits: MidiHit[]) => void;
@@ -59,20 +65,24 @@ export function Timeline(props: TimelineProps) {
 	const [scrollLeft, setScrollLeft] = createSignal(0);
 	const [loopDragMode, setLoopDragMode] = createSignal<TimelineLoopDragMode | null>(null);
 	const durationMs = createMemo(() => Math.max(1, props.session.durationMs));
-	const scale = createMemo(() => createTimelineScale({
-		durationMs: durationMs(),
-		bpm: props.session.bpm,
-		viewportWidth: timeViewportWidth(),
-		zoom: zoom(),
-		scrollLeft: scrollLeft(),
-	}));
+	const scale = createMemo(() =>
+		createTimelineScale({
+			durationMs: durationMs(),
+			bpm: props.session.bpm,
+			viewportWidth: timeViewportWidth(),
+			zoom: zoom(),
+			scrollLeft: scrollLeft(),
+		}),
+	);
 	const contentWidth = createMemo(() => scale().contentWidth);
-	const loopRange = createMemo(() => snapLoopRangeToBeatGrid(
-		props.session.durationMs,
-		props.controls.loopStartMs,
-		props.controls.loopEndMs,
-		props.session.bpm,
-	));
+	const loopRange = createMemo(() =>
+		snapLoopRangeToBeatGrid(
+			props.session.durationMs,
+			props.controls.loopStartMs,
+			props.controls.loopEndMs,
+			props.session.bpm,
+		),
+	);
 	const loopStartX = createMemo(() => timeMsToX(loopRange().startMs, durationMs(), contentWidth()));
 	const loopEndX = createMemo(() => timeMsToX(loopRange().endMs, durationMs(), contentWidth()));
 	const loopWidth = createMemo(() => Math.max(0, loopEndX() - loopStartX()));
@@ -80,10 +90,20 @@ export function Timeline(props: TimelineProps) {
 	const rulerTicks = createMemo(() => createTimelineTicks(scale()));
 	const gridLines = createMemo(() => createTimelineGridLines(scale()));
 	const zoomPercent = createMemo(() => formatPercent(zoom()));
+	const hoverTimeMs = createMemo(() => {
+		const x = hoverX();
+		return x === null ? 0 : xToTimeMs(x, durationMs(), contentWidth());
+	});
+	const loopLengthMs = createMemo(() => Math.max(0, loopRange().endMs - loopRange().startMs));
+	const loopRangeTitle = createMemo(
+		() =>
+			`Loop · ${formatBarsBeats(loopLengthMs(), props.session.bpm)} (${formatTimecode(loopLengthMs())}) — right-click to disable, shift-drag the ruler to redraw`,
+	);
 	let followPausedUntil = 0;
 	let programmaticScroll = false;
 	let scrollReleaseFrame = 0;
 	let previewKey = "";
+	const zoomVelocity = createZoomVelocityState();
 
 	onMount(() => {
 		function updateTimeViewportWidth() {
@@ -112,7 +132,8 @@ export function Timeline(props: TimelineProps) {
 			timeViewportWidth(),
 			scrollLeft(),
 		);
-		if (Date.now() > followPausedUntil && Math.abs(nextScrollLeft - scrollLeft()) > 0.5) setTimelineScrollLeft(nextScrollLeft);
+		if (Date.now() > followPausedUntil && Math.abs(nextScrollLeft - scrollLeft()) > 0.5)
+			setTimelineScrollLeft(nextScrollLeft);
 	});
 
 	onCleanup(() => {
@@ -183,7 +204,7 @@ export function Timeline(props: TimelineProps) {
 		props.onSeek(timeFromPointer(clientX));
 	}
 
-	function beginSeek(event: PointerEvent & {currentTarget: HTMLElement}, previewHits = false) {
+	function beginSeek(event: PointerEvent & { currentTarget: HTMLElement }, previewHits = false) {
 		if (event.button !== 0) return;
 		pauseAutoFollow();
 		event.currentTarget.setPointerCapture(event.pointerId);
@@ -191,16 +212,40 @@ export function Timeline(props: TimelineProps) {
 		seekFromPointer(event.clientX);
 	}
 
-	function moveSeek(event: PointerEvent & {currentTarget: HTMLElement}, previewHits = false) {
+	function moveSeek(event: PointerEvent & { currentTarget: HTMLElement }, previewHits = false) {
 		updateHoverFromPointer(event.clientX, previewHits);
 		if (event.currentTarget.hasPointerCapture(event.pointerId)) seekFromPointer(event.clientX);
 	}
 
-	function endSeek(event: PointerEvent & {currentTarget: HTMLElement}) {
-		if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+	function endSeek(event: PointerEvent & { currentTarget: HTMLElement }) {
+		if (event.currentTarget.hasPointerCapture(event.pointerId))
+			event.currentTarget.releasePointerCapture(event.pointerId);
 	}
 
-	function beginLoopDrag(event: PointerEvent & {currentTarget: HTMLElement}, mode: TimelineLoopDragMode) {
+	function beginRulerLoopCreate(event: PointerEvent & { currentTarget: HTMLElement }) {
+		if (event.button !== 0) return;
+		event.preventDefault();
+		pauseAutoFollow();
+		clearPreviewHits();
+		event.currentTarget.setPointerCapture(event.pointerId);
+		const clickMs = timeFromPointer(event.clientX);
+		const minLengthMs = getTimelineLoopMinLengthMs(props.session.durationMs, props.session.bpm);
+		const startMs = clamp(clickMs, 0, Math.max(0, props.session.durationMs - minLengthMs));
+		const endMs = Math.min(props.session.durationMs, startMs + minLengthMs);
+		props.onLoopChange(startMs, endMs);
+		if (!props.controls.loopEnabled) props.onLoopEnabledChange(true);
+		loopDrag = {
+			mode: "end",
+			pointerId: event.pointerId,
+			originPointerMs: clickMs,
+			originStartMs: startMs,
+			originEndMs: endMs,
+		};
+		setLoopDragMode("end");
+		updateHoverFromPointer(event.clientX, false);
+	}
+
+	function beginLoopDrag(event: PointerEvent & { currentTarget: HTMLElement }, mode: TimelineLoopDragMode) {
 		if (event.button !== 0) return;
 		event.preventDefault();
 		event.stopPropagation();
@@ -218,8 +263,9 @@ export function Timeline(props: TimelineProps) {
 		setLoopDragMode(mode);
 	}
 
-	function moveLoopDrag(event: PointerEvent & {currentTarget: HTMLElement}) {
-		if (!loopDrag || loopDrag.pointerId !== event.pointerId || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+	function moveLoopDrag(event: PointerEvent & { currentTarget: HTMLElement }) {
+		if (!loopDrag || loopDrag.pointerId !== event.pointerId || !event.currentTarget.hasPointerCapture(event.pointerId))
+			return;
 		event.preventDefault();
 		event.stopPropagation();
 		const next = dragTimelineLoopRange({
@@ -234,7 +280,7 @@ export function Timeline(props: TimelineProps) {
 		props.onLoopChange(next.startMs, next.endMs);
 	}
 
-	function endLoopDrag(event: PointerEvent & {currentTarget: HTMLElement}) {
+	function endLoopDrag(event: PointerEvent & { currentTarget: HTMLElement }) {
 		if (loopDrag && loopDrag.pointerId === event.pointerId && event.currentTarget.hasPointerCapture(event.pointerId)) {
 			event.currentTarget.releasePointerCapture(event.pointerId);
 		}
@@ -253,13 +299,15 @@ export function Timeline(props: TimelineProps) {
 			anchorX,
 		});
 		setZoom(result.zoom);
-		window.requestAnimationFrame(() => setTimelineScrollLeft(result.scrollLeft));
+		if (scrollHost) void scrollHost.offsetWidth;
+		setTimelineScrollLeft(result.scrollLeft);
 	}
 
 	function fitTimeline() {
 		pauseAutoFollow();
 		setZoom(DEFAULT_TIMELINE_ZOOM);
-		window.requestAnimationFrame(() => setTimelineScrollLeft(0));
+		if (scrollHost) void scrollHost.offsetWidth;
+		setTimelineScrollLeft(0);
 	}
 
 	function handleWheel(event: WheelEvent) {
@@ -271,14 +319,13 @@ export function Timeline(props: TimelineProps) {
 
 		if (event.ctrlKey || event.metaKey) {
 			event.preventDefault();
-			const direction = event.deltaY < 0 ? 1 : -1;
-			applyZoom(zoom() + direction * TIMELINE_ZOOM_STEP, anchorX);
+			const multiplier = getZoomVelocityMultiplier(zoomVelocity, performance.now());
+			applyZoom(zoomFromWheelDelta(zoom(), event.deltaY * multiplier), anchorX);
 			return;
 		}
 
-		const horizontalDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey
-			? event.deltaX || event.deltaY
-			: 0;
+		const horizontalDelta =
+			Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey ? event.deltaX || event.deltaY : 0;
 		const canScrollVertically = scrollHost.scrollHeight > scrollHost.clientHeight + 1;
 
 		if (horizontalDelta || !canScrollVertically) {
@@ -295,35 +342,53 @@ export function Timeline(props: TimelineProps) {
 		<section class="timeline-panel" aria-label="MIDI drum timeline">
 			<div class="timeline-toolbar">
 				<div class="timeline-toolbar__readout">
-					<span>Timeline</span>
-					<small>{formatTime(props.positionMs)} / {formatTime(durationMs())}</small>
+					<span class="timeline-toolbar__title">Timeline</span>
+					<span class="timeline-toolbar__time" aria-label="Playback position">
+						<strong>{formatTimecode(props.positionMs)}</strong>
+						<span class="timeline-toolbar__time-sep">/</span>
+						<span class="timeline-toolbar__time-total">{formatTimecode(durationMs())}</span>
+					</span>
+					<span class="timeline-toolbar__bars" aria-label="Bar and beat">
+						{formatBarsBeats(props.positionMs, props.session.bpm)}
+					</span>
+					<span class="timeline-toolbar__bpm" aria-label="Tempo">
+						{Math.round(props.session.bpm)} <small>BPM</small>
+					</span>
 				</div>
 				<div class="timeline-zoom" aria-label="Timeline zoom controls">
-					<button class="timeline-tool-button" aria-label="Zoom out" onClick={() => applyZoom(zoom() - TIMELINE_ZOOM_STEP)}>
-						<ZoomOut/>
+					<button
+						class="timeline-tool-button"
+						aria-label="Zoom out"
+						onClick={() => applyZoom(zoom() - TIMELINE_ZOOM_STEP)}
+					>
+						<ZoomOut />
 					</button>
 					<Slider.Root
 						class="timeline-zoom-slider"
 						value={[zoom()]}
 						minValue={MIN_TIMELINE_ZOOM}
 						maxValue={MAX_TIMELINE_ZOOM}
-						step={0.05}
+						step={0.01}
 						getValueLabel={() => zoomPercent()}
 						onChange={(values) => applyZoom(values[0] ?? zoom())}
 					>
 						<Slider.Track class="range-control__track">
-							<Slider.Fill class="range-control__fill"/>
+							<Slider.Fill class="range-control__fill" />
 							<Slider.Thumb class="range-control__thumb" aria-label="Timeline zoom">
-								<Slider.Input/>
+								<Slider.Input />
 							</Slider.Thumb>
 						</Slider.Track>
 					</Slider.Root>
 					<span class="timeline-zoom__value">{zoomPercent()}</span>
-					<button class="timeline-tool-button" aria-label="Zoom in" onClick={() => applyZoom(zoom() + TIMELINE_ZOOM_STEP)}>
-						<ZoomIn/>
+					<button
+						class="timeline-tool-button"
+						aria-label="Zoom in"
+						onClick={() => applyZoom(zoom() + TIMELINE_ZOOM_STEP)}
+					>
+						<ZoomIn />
 					</button>
-					<button class="timeline-tool-button" aria-label="Fit timeline" onClick={fitTimeline}>
-						<Maximize2/>
+					<button class="timeline-tool-button" aria-label="Fit timeline (double-click ruler)" onClick={fitTimeline}>
+						<Maximize2 />
 					</button>
 				</div>
 			</div>
@@ -349,21 +414,43 @@ export function Timeline(props: TimelineProps) {
 					</div>
 					<div
 						class="timeline-ruler"
-						onPointerDown={(event) => beginSeek(event)}
-						onPointerMove={(event) => moveSeek(event)}
-						onPointerUp={endSeek}
-						onPointerCancel={endSeek}
+						onPointerDown={(event) => {
+							if (event.button === 0 && event.shiftKey) {
+								beginRulerLoopCreate(event);
+								return;
+							}
+							beginSeek(event);
+						}}
+						onPointerMove={(event) => {
+							if (loopDrag && loopDrag.pointerId === event.pointerId) {
+								moveLoopDrag(event);
+								return;
+							}
+							moveSeek(event);
+						}}
+						onPointerUp={(event) => {
+							if (loopDrag && loopDrag.pointerId === event.pointerId) {
+								endLoopDrag(event);
+								return;
+							}
+							endSeek(event);
+						}}
+						onPointerCancel={(event) => {
+							if (loopDrag && loopDrag.pointerId === event.pointerId) {
+								endLoopDrag(event);
+								return;
+							}
+							endSeek(event);
+						}}
 						onPointerLeave={(event) => {
 							if (!event.currentTarget.hasPointerCapture(event.pointerId)) clearHover();
 						}}
+						onDblClick={fitTimeline}
 					>
 						<div class="timeline-ruler__ticks" aria-hidden="true">
 							<For each={rulerTicks()}>
 								{(tick) => (
-									<div
-										class={`timeline-ruler__tick is-${tick.kind}`}
-										style={{left: `${tick.x}px`}}
-									>
+									<div class={`timeline-ruler__tick is-${tick.kind}`} style={{ left: `${tick.x}px` }}>
 										<strong>{tick.beatLabel}</strong>
 										<small>{tick.timeLabel}</small>
 									</div>
@@ -379,15 +466,19 @@ export function Timeline(props: TimelineProps) {
 								}}
 								role="button"
 								tabIndex={0}
-								aria-label={`Move loop region from ${formatTime(loopRange().startMs)} to ${formatTime(loopRange().endMs)}`}
-								style={{left: `${loopStartX()}px`, width: `${loopWidth()}px`}}
+								title={loopRangeTitle()}
+								aria-label={`Move loop region from ${formatTimecode(loopRange().startMs)} to ${formatTimecode(loopRange().endMs)} — right-click to disable looping`}
+								style={{ left: `${loopStartX()}px`, width: `${loopWidth()}px` }}
 								onPointerDown={(event) => beginLoopDrag(event, "move")}
 								onPointerMove={moveLoopDrag}
 								onPointerUp={endLoopDrag}
 								onPointerCancel={endLoopDrag}
-							>
-								<span class="timeline-loop-range__label">{formatTime(loopRange().startMs)} - {formatTime(loopRange().endMs)}</span>
-							</div>
+								onContextMenu={(event) => {
+									event.preventDefault();
+									event.stopPropagation();
+									if (props.controls.loopEnabled) props.onLoopEnabledChange(false);
+								}}
+							/>
 							<button
 								type="button"
 								class="timeline-loop-handle is-start"
@@ -396,7 +487,7 @@ export function Timeline(props: TimelineProps) {
 									"is-dragging": loopDragMode() === "start",
 								}}
 								aria-label="Adjust loop start"
-								style={{left: `${loopStartX()}px`}}
+								style={{ left: `${loopStartX()}px` }}
 								onPointerDown={(event) => beginLoopDrag(event, "start")}
 								onPointerMove={moveLoopDrag}
 								onPointerUp={endLoopDrag}
@@ -410,7 +501,7 @@ export function Timeline(props: TimelineProps) {
 									"is-dragging": loopDragMode() === "end",
 								}}
 								aria-label="Adjust loop end"
-								style={{left: `${loopEndX()}px`}}
+								style={{ left: `${loopEndX()}px` }}
 								onPointerDown={(event) => beginLoopDrag(event, "end")}
 								onPointerMove={moveLoopDrag}
 								onPointerUp={endLoopDrag}
@@ -464,30 +555,32 @@ export function Timeline(props: TimelineProps) {
 					>
 						<div class="timeline-grid-lines" aria-hidden="true">
 							<For each={gridLines()}>
-								{(line) => <span class={`timeline-grid-line is-${line.kind}`} style={{left: `${line.x}px`}}/>}
+								{(line) => <span class={`timeline-grid-line is-${line.kind}`} style={{ left: `${line.x}px` }} />}
 							</For>
 						</div>
 						<div class="timeline-loop-body-layer" aria-hidden="true">
 							<div
 								class="timeline-loop-body-fill"
-								classList={{"is-active": props.controls.loopEnabled}}
-								style={{left: `${loopStartX()}px`, width: `${loopWidth()}px`}}
+								classList={{ "is-active": props.controls.loopEnabled }}
+								style={{ left: `${loopStartX()}px`, width: `${loopWidth()}px` }}
 							/>
 							<div
 								class="timeline-loop-boundary is-start"
-								classList={{"is-active": props.controls.loopEnabled}}
-								style={{left: `${loopStartX()}px`}}
+								classList={{ "is-active": props.controls.loopEnabled }}
+								style={{ left: `${loopStartX()}px` }}
 							/>
 							<div
 								class="timeline-loop-boundary is-end"
-								classList={{"is-active": props.controls.loopEnabled}}
-								style={{left: `${loopEndX()}px`}}
+								classList={{ "is-active": props.controls.loopEnabled }}
+								style={{ left: `${loopEndX()}px` }}
 							/>
 						</div>
 						<Show when={hoverX() !== null}>
-							<div class="timeline-hover-cursor" style={{left: `${hoverX() ?? 0}px`}}/>
+							<div class="timeline-hover-cursor" style={{ left: `${hoverX() ?? 0}px` }} aria-hidden="true" />
 						</Show>
-						<div class="playhead" style={{left: `${playheadX()}px`}}/>
+						<div class="playhead" style={{ left: `${playheadX()}px` }}>
+							<span class="playhead__head" aria-hidden="true" />
+						</div>
 						<For each={props.kit.pieces}>
 							{(piece) => {
 								const status = () => props.laneStatuses[piece.id];
@@ -502,7 +595,7 @@ export function Timeline(props: TimelineProps) {
 											"is-lane-solo-excluded": status().reason === "solo-excluded",
 										}}
 										data-lane-status={status().reason}
-										style={{"--piece-color": piece.color}}
+										style={{ "--piece-color": piece.color }}
 									>
 										<For each={props.session.hits.filter((hit) => hit.pieceId === piece.id)}>
 											{(hit) => {
@@ -511,7 +604,7 @@ export function Timeline(props: TimelineProps) {
 												return (
 													<span
 														class="timeline-hit"
-														classList={{"is-previewed": previewHitIds().has(hit.id)}}
+														classList={{ "is-previewed": previewHitIds().has(hit.id) }}
 														style={{
 															left: `${timeMsToX(hit.timeMs, durationMs(), contentWidth())}px`,
 															top: `calc(50% - ${height() / 2}px)`,
@@ -527,6 +620,22 @@ export function Timeline(props: TimelineProps) {
 								);
 							}}
 						</For>
+					</div>
+					<div class="timeline-hover-corner" aria-hidden="true" />
+					<div class="timeline-hover-strip" aria-hidden="true">
+						<Show when={hoverX() !== null}>
+							<div class="timeline-hover-chip" style={{ left: `${hoverX() ?? 0}px` }}>
+								<span
+									class="timeline-hover-cursor__chip"
+									classList={{
+										"is-pinned-end": (hoverX() ?? 0) > contentWidth() - 80,
+									}}
+								>
+									<strong>{formatBarsBeats(hoverTimeMs(), props.session.bpm)}</strong>
+									<small>{formatTimecode(hoverTimeMs())}</small>
+								</span>
+							</div>
+						</Show>
 					</div>
 				</div>
 			</div>

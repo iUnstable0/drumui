@@ -1,7 +1,7 @@
 {
   "name": "drumui",
   "version": "0.1.0",
-  "description": "",
+  "description": "Drum trainer that plays MIDI files through embedded samples with metronome, looping, and per-lane control.",
   "type": "module",
   "scripts": {
     "start": "vite",
@@ -9,18 +9,27 @@
     "build": "vite build",
     "serve": "vite preview",
     "test": "vitest run --environment node",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check src && tsc --noEmit",
     "tauri": "tauri"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iUnstable0/drumui.git"
+  },
   "dependencies": {
     "@kobalte/core": "^0.13.11",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
-    "@tauri-apps/plugin-opener": "^2.5.3",
     "lucide-solid": "^1.11.0",
     "solid-js": "^1.9.12"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.2.5",
     "@tauri-apps/cli": "^2.10.1",
     "sass": "^1.99.0",
     "typescript": "~6.0.3",

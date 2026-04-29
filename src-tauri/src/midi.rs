@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const DEFAULT_BPM: f64 = 120.0;
 const DEFAULT_MICROS_PER_QUARTER: u32 = 500_000;
 const MIN_BPM: f64 = 40.0;
+const MAX_MIDI_DURATION_MS: f64 = 60.0 * 60.0 * 1000.0;
+const MAX_MIDI_HITS: usize = 100_000;
 
 #[derive(Clone, Copy, Debug)]
 struct TempoPoint {
@@ -141,6 +143,13 @@ pub fn parse_midi_bytes(bytes: &[u8], label: &str) -> Result<SessionDto, String>
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.note.cmp(&b.note))
     });
+    if hits.len() > MAX_MIDI_HITS {
+        return Err(format!(
+            "MIDI file has too many notes ({}; max {}).",
+            hits.len(),
+            MAX_MIDI_HITS
+        ));
+    }
     let last_hit_time = hits.last().map(|hit| hit.time_ms).unwrap_or(0.0);
     let beat_tail_ms = if hits.is_empty() {
         0.0
@@ -148,6 +157,12 @@ pub fn parse_midi_bytes(bytes: &[u8], label: &str) -> Result<SessionDto, String>
         beat_end_ms_after(last_hit_time, bpm)
     };
     let duration_ms = f64::max(1000.0, f64::max(midi_duration_ms, beat_tail_ms));
+    if duration_ms > MAX_MIDI_DURATION_MS {
+        return Err(format!(
+            "MIDI track is longer than {} hour(s).",
+            MAX_MIDI_DURATION_MS / 3_600_000.0
+        ));
+    }
     let mut unmapped_notes: Vec<_> = unmapped
         .into_values()
         .map(|note| UnmappedMidiNoteDto {

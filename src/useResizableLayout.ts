@@ -1,5 +1,5 @@
-import {createSignal} from "solid-js";
-import {clamp} from "./utils/format";
+import { createSignal } from "solid-js";
+import { clamp } from "./utils/format";
 
 type ResizeTarget = "library" | "inspector" | "kit";
 
@@ -10,9 +10,9 @@ const DEFAULTS = {
 };
 
 const LIMITS = {
-	library: {min: 220, max: 360},
-	inspector: {min: 260, max: 560},
-	kit: {min: 220, max: 560},
+	library: { min: 220, max: 360 },
+	inspector: { min: 260, max: 560 },
+	kit: { min: 220, max: 560 },
 };
 
 export function useResizableLayout() {
@@ -34,7 +34,9 @@ export function useResizableLayout() {
 			if (target === "library") {
 				setLibraryWidth(clamp(startLibraryWidth + moveEvent.clientX - startX, LIMITS.library.min, LIMITS.library.max));
 			} else if (target === "inspector") {
-				setInspectorWidth(clamp(startInspectorWidth + startX - moveEvent.clientX, LIMITS.inspector.min, LIMITS.inspector.max));
+				setInspectorWidth(
+					clamp(startInspectorWidth + startX - moveEvent.clientX, LIMITS.inspector.min, LIMITS.inspector.max),
+				);
 			} else {
 				setKitHeight(clamp(startKitHeight + moveEvent.clientY - startY, LIMITS.kit.min, LIMITS.kit.max));
 			}
@@ -46,7 +48,7 @@ export function useResizableLayout() {
 		};
 
 		window.addEventListener("pointermove", move);
-		window.addEventListener("pointerup", stop, {once: true});
+		window.addEventListener("pointerup", stop, { once: true });
 	}
 
 	function reset() {

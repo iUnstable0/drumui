@@ -1,15 +1,15 @@
-import {Show} from "solid-js";
-import {MixerPanel} from "./components/MixerPanel";
-import {EmptyState} from "./components/EmptyState";
-import {FileLibrary} from "./components/FileLibrary";
-import {KitVisualizer} from "./components/KitVisualizer";
-import {Timeline} from "./components/Timeline";
-import {TransportBar} from "./components/TransportBar";
-import {ANALOG_808_KIT} from "./kit/analog808";
-import {useDrumTrainer} from "./useDrumTrainer";
-import {useKeyboardShortcuts} from "./useKeyboardShortcuts";
-import {useLoopVisualTween} from "./useLoopVisualTween";
-import {useResizableLayout} from "./useResizableLayout";
+import { Show } from "solid-js";
+import { EmptyState } from "./components/EmptyState";
+import { FileLibrary } from "./components/FileLibrary";
+import { KitVisualizer } from "./components/KitVisualizer";
+import { MixerPanel } from "./components/MixerPanel";
+import { Timeline } from "./components/Timeline";
+import { TransportBar } from "./components/TransportBar";
+import { ANALOG_808_KIT } from "./kit/analog808";
+import { useDrumTrainer } from "./useDrumTrainer";
+import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
+import { useLoopVisualTween } from "./useLoopVisualTween";
+import { useResizableLayout } from "./useResizableLayout";
 import "./styles/global.scss";
 import "./styles/App.scss";
 
@@ -49,10 +49,19 @@ function App() {
 				"--kit-pane-height": `${layout.kitHeight()}px`,
 			}}
 		>
-			<FileLibrary session={trainer.session()} fileLabel={trainer.fileLabel()} error={trainer.loadError()} isLoading={trainer.isLoading()} collapsed={layout.libraryCollapsed()} onToggleCollapse={layout.toggleLibraryCollapsed} onPick={trainer.pickFile} onClear={trainer.clearSession}/>
+			<FileLibrary
+				session={trainer.session()}
+				fileLabel={trainer.fileLabel()}
+				error={trainer.loadError()}
+				isLoading={trainer.isLoading()}
+				collapsed={layout.libraryCollapsed()}
+				onToggleCollapse={layout.toggleLibraryCollapsed}
+				onPick={trainer.pickFile}
+				onClear={trainer.clearSession}
+			/>
 			<div
 				class="resize-handle resize-handle--vertical"
-				classList={{"is-hidden": layout.libraryCollapsed()}}
+				classList={{ "is-hidden": layout.libraryCollapsed() }}
 				role="separator"
 				aria-orientation="vertical"
 				aria-label="Resize library"
@@ -62,11 +71,29 @@ function App() {
 					if (!layout.libraryCollapsed()) layout.beginResize("library", event);
 				}}
 			/>
-			<section class="practice-shell" classList={{"has-session": Boolean(trainer.session())}} style={loopVisualStyle()} aria-label="808 light trainer practice area">
-				<Show when={trainer.session()} fallback={<EmptyState dragOver={trainer.dragOver()} isLoading={trainer.isLoading()} onPick={trainer.pickFile}/>}>
+			<section
+				class="practice-shell"
+				classList={{ "has-session": Boolean(trainer.session()) }}
+				style={loopVisualStyle()}
+				aria-label="808 light trainer practice area"
+			>
+				<Show
+					when={trainer.session()}
+					fallback={
+						<EmptyState dragOver={trainer.dragOver()} isLoading={trainer.isLoading()} onPick={trainer.pickFile} />
+					}
+				>
 					{(current) => (
 						<>
-							<KitVisualizer kit={ANALOG_808_KIT} activeLights={trainer.activeLights()} laneStatuses={trainer.laneStatuses()} activePieceId={trainer.activePieceId()} onAudition={trainer.audition} onFocus={trainer.focusLane} onPointerLane={trainer.pointAtLane}/>
+							<KitVisualizer
+								kit={ANALOG_808_KIT}
+								activeLights={trainer.activeLights()}
+								laneStatuses={trainer.laneStatuses()}
+								activePieceId={trainer.activePieceId()}
+								onAudition={trainer.audition}
+								onFocus={trainer.focusLane}
+								onPointerLane={trainer.pointAtLane}
+							/>
 							<div
 								class="resize-handle resize-handle--horizontal"
 								role="separator"
@@ -75,15 +102,39 @@ function App() {
 								onDblClick={layout.reset}
 								onPointerDown={(event) => layout.beginResize("kit", event)}
 							/>
-								<Timeline session={current()} kit={ANALOG_808_KIT} positionMs={trainer.playback().positionMs} laneStatuses={trainer.laneStatuses()} activePieceId={trainer.activePieceId()} controls={trainer.controls()} onSeek={trainer.seek} onLoopChange={(loopStartMs, loopEndMs) => trainer.updateControls({loopStartMs, loopEndMs})} onFocusLane={trainer.focusLane} onPointerLane={trainer.pointAtLane} onPreviewHits={trainer.previewTimelineHits} onClearPreview={trainer.clearTimelinePreview} onAuditionLane={trainer.auditionLane}/>
+							<Timeline
+								session={current()}
+								kit={ANALOG_808_KIT}
+								positionMs={trainer.playback().positionMs}
+								laneStatuses={trainer.laneStatuses()}
+								activePieceId={trainer.activePieceId()}
+								controls={trainer.controls()}
+								onSeek={trainer.seek}
+								onLoopChange={(loopStartMs, loopEndMs) => trainer.updateControls({ loopStartMs, loopEndMs })}
+								onLoopEnabledChange={(loopEnabled) => trainer.updateControls({ loopEnabled })}
+								onFocusLane={trainer.focusLane}
+								onPointerLane={trainer.pointAtLane}
+								onPreviewHits={trainer.previewTimelineHits}
+								onClearPreview={trainer.clearTimelinePreview}
+								onAuditionLane={trainer.auditionLane}
+							/>
 						</>
 					)}
 				</Show>
-				<TransportBar playback={trainer.playback()} controls={trainer.controls()} canPlay={trainer.canPlay()} onToggle={trainer.togglePlayback} onRestart={trainer.restart} onStop={trainer.stop} onControlsChange={trainer.updateControls}/>
+					<TransportBar
+						playback={trainer.playback()}
+						controls={trainer.controls()}
+						metronomeTick={trainer.metronomeTick()}
+						canPlay={trainer.canPlay()}
+					onToggle={trainer.togglePlayback}
+					onRestart={trainer.restart}
+					onStop={trainer.stop}
+					onControlsChange={trainer.updateControls}
+				/>
 			</section>
 			<div
 				class="resize-handle resize-handle--vertical"
-				classList={{"is-hidden": layout.inspectorCollapsed()}}
+				classList={{ "is-hidden": layout.inspectorCollapsed() }}
 				role="separator"
 				aria-orientation="vertical"
 				aria-label="Resize inspector"
@@ -93,7 +144,20 @@ function App() {
 					if (!layout.inspectorCollapsed()) layout.beginResize("inspector", event);
 				}}
 			/>
-			<MixerPanel kit={ANALOG_808_KIT} session={trainer.session()} activePieceId={trainer.activePieceId()} activeInputSource={trainer.activeInputSource()} laneStatuses={trainer.laneStatuses()} laneStates={trainer.laneStates} recentEvents={trainer.recentEvents()} collapsed={layout.inspectorCollapsed()} onToggleCollapse={layout.toggleInspectorCollapsed} onFocusLane={trainer.focusLane} onPointerLane={trainer.pointAtLane} onLaneChange={trainer.updateLane}/>
+			<MixerPanel
+				kit={ANALOG_808_KIT}
+				session={trainer.session()}
+				activePieceId={trainer.activePieceId()}
+				activeInputSource={trainer.activeInputSource()}
+				laneStatuses={trainer.laneStatuses()}
+				laneStates={trainer.laneStates}
+				recentEvents={trainer.recentEvents()}
+				collapsed={layout.inspectorCollapsed()}
+				onToggleCollapse={layout.toggleInspectorCollapsed}
+				onFocusLane={trainer.focusLane}
+				onPointerLane={trainer.pointAtLane}
+				onLaneChange={trainer.updateLane}
+			/>
 		</main>
 	);
 }

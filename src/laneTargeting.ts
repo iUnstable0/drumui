@@ -1,9 +1,9 @@
-import type {ActiveInputSource, ActiveLaneState, KitPieceId} from "./types";
-import {KIT_PIECE_IDS} from "./types";
-import {clamp} from "./utils/format";
+import type { ActiveInputSource, ActiveLaneState, KitPieceId } from "./types";
+import { KIT_PIECE_IDS } from "./types";
+import { clamp } from "./utils/format";
 
 export function createActiveLane(pieceId: KitPieceId, inputSource: ActiveInputSource): ActiveLaneState {
-	return {pieceId, inputSource};
+	return { pieceId, inputSource };
 }
 
 export function moveActiveLane(

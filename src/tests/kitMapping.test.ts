@@ -1,6 +1,13 @@
-import {describe, expect, it} from "vitest";
-import {ANALOG_808_KIT, createDefaultLaneState, createLaneStatusMap, getLaneStatus, isLaneAudible, mapMidiNoteToPiece} from "../kit/analog808";
-import {KIT_PIECE_IDS} from "../types";
+import { describe, expect, it } from "vitest";
+import {
+	ANALOG_808_KIT,
+	createDefaultLaneState,
+	createLaneStatusMap,
+	getLaneStatus,
+	isLaneAudible,
+	mapMidiNoteToPiece,
+} from "../kit/analog808";
+import { KIT_PIECE_IDS } from "../types";
 
 describe("analog 808 kit mapping", () => {
 	it("maps common General MIDI drum notes to the kit", () => {
@@ -19,7 +26,7 @@ describe("analog 808 kit mapping", () => {
 		const states = createDefaultLaneState();
 		expect(Object.keys(states)).toHaveLength(ANALOG_808_KIT.pieces.length);
 		for (const id of KIT_PIECE_IDS) {
-			expect(states[id]).toMatchObject({volume: 0.9, muted: false, soloed: false});
+			expect(states[id]).toMatchObject({ volume: 0.9, muted: false, soloed: false });
 		}
 	});
 
@@ -31,10 +38,10 @@ describe("analog 808 kit mapping", () => {
 
 		const statuses = createLaneStatusMap(states);
 		expect(isLaneAudible("clap", states)).toBe(true);
-		expect(getLaneStatus("clap", states)).toEqual({audible: true, reason: "audible"});
-		expect(statuses.clap).toEqual({audible: true, reason: "audible"});
-		expect(statuses.kick).toEqual({audible: false, reason: "muted"});
-		expect(statuses.snare).toEqual({audible: false, reason: "silent"});
-		expect(statuses.closedHat).toEqual({audible: false, reason: "solo-excluded"});
+		expect(getLaneStatus("clap", states)).toEqual({ audible: true, reason: "audible" });
+		expect(statuses.clap).toEqual({ audible: true, reason: "audible" });
+		expect(statuses.kick).toEqual({ audible: false, reason: "muted" });
+		expect(statuses.snare).toEqual({ audible: false, reason: "silent" });
+		expect(statuses.closedHat).toEqual({ audible: false, reason: "solo-excluded" });
 	});
 });

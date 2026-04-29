@@ -1,5 +1,5 @@
-import {For} from "solid-js";
-import type {KeyboardShortcutHint} from "../keyboardShortcuts";
+import { For } from "solid-js";
+import type { KeyboardShortcutHint } from "../keyboardShortcuts";
 
 interface ShortcutKeycapProps {
 	hint: KeyboardShortcutHint;

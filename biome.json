@@ -1,0 +1,51 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
+	"files": {
+		"includes": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "*.json"]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 120,
+		"lineEnding": "lf"
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"a11y": {
+				"useButtonType": "off",
+				"noStaticElementInteractions": "off",
+				"useKeyWithClickEvents": "off",
+				"useFocusableInteractive": "off",
+				"useAriaPropsForRole": "off",
+				"useAriaPropsSupportedByRole": "off",
+				"useSemanticElements": "off",
+				"noNoninteractiveTabindex": "off",
+				"noNoninteractiveElementToInteractiveRole": "off"
+			},
+			"correctness": {
+				"noUnusedImports": "error",
+				"noUnusedVariables": "error"
+			},
+			"style": {
+				"useImportType": "error",
+				"useConst": "error"
+			},
+			"suspicious": {
+				"noExplicitAny": "error",
+				"noConfusingVoidType": "warn"
+			},
+			"performance": {
+				"noAccumulatingSpread": "warn"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"semicolons": "always",
+			"trailingCommas": "all"
+		}
+	}
+}

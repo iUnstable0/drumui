@@ -1,8 +1,8 @@
 import * as Tooltip from "@kobalte/core/tooltip";
-import {Show} from "solid-js";
-import type {JSX} from "solid-js";
-import type {KeyboardShortcutHint} from "../keyboardShortcuts";
-import {ShortcutKeycap} from "./ShortcutKeycap";
+import type { JSX } from "solid-js";
+import { Show } from "solid-js";
+import type { KeyboardShortcutHint } from "../keyboardShortcuts";
+import { ShortcutKeycap } from "./ShortcutKeycap";
 
 interface IconButtonProps {
 	label: string;
@@ -36,9 +36,9 @@ export function IconButton(props: IconButtonProps) {
 				<Tooltip.Content class="tooltip">
 					<span>{props.label}</span>
 					<Show when={props.shortcut}>
-						{(shortcut) => <ShortcutKeycap hint={shortcut()} class="shortcut-keycap--tooltip"/>}
+						{(shortcut) => <ShortcutKeycap hint={shortcut()} class="shortcut-keycap--tooltip" />}
 					</Show>
-					<Tooltip.Arrow class="tooltip-arrow"/>
+					<Tooltip.Arrow class="tooltip-arrow" />
 				</Tooltip.Content>
 			</Tooltip.Portal>
 		</Tooltip.Root>

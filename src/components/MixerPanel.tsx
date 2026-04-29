@@ -1,11 +1,20 @@
 import * as Tabs from "@kobalte/core/tabs";
-import {BellRing, ListMusic, PanelRightClose, PanelRightOpen, SlidersHorizontal} from "lucide-solid";
-import {For, Show} from "solid-js";
-import {KEYBOARD_SHORTCUT_HINTS} from "../keyboardShortcuts";
-import type {ActiveInputSource, DrumKit, KitPieceId, LaneState, LaneStateMap, LaneStatusMap, LightEvent, ParsedMidi} from "../types";
-import {formatPercent, formatTime} from "../utils/format";
-import {RangeControl} from "./RangeControl";
-import {ShortcutKeycap} from "./ShortcutKeycap";
+import { BellRing, ListMusic, PanelRightClose, PanelRightOpen, SlidersHorizontal } from "lucide-solid";
+import { For, Show } from "solid-js";
+import { KEYBOARD_SHORTCUT_HINTS } from "../keyboardShortcuts";
+import type {
+	ActiveInputSource,
+	DrumKit,
+	KitPieceId,
+	LaneState,
+	LaneStateMap,
+	LaneStatusMap,
+	LightEvent,
+	ParsedMidi,
+} from "../types";
+import { formatPercent, formatTime } from "../utils/format";
+import { RangeControl } from "./RangeControl";
+import { ShortcutKeycap } from "./ShortcutKeycap";
 
 interface MixerPanelProps {
 	kit: DrumKit;
@@ -33,25 +42,41 @@ export function MixerPanel(props: MixerPanelProps) {
 					<div class="inspector-heading">
 						<h2>Inspector</h2>
 						<button class="panel-icon-button" aria-label="Collapse inspector" onClick={props.onToggleCollapse}>
-							<PanelRightClose/>
+							<PanelRightClose />
 						</button>
 					</div>
 					<Tabs.Root defaultValue="mix" class="tabs">
 						<Tabs.List class="tabs__list" aria-label="Inspector panels">
-							<Tabs.Trigger value="mix"><SlidersHorizontal/> Mix</Tabs.Trigger>
-							<Tabs.Trigger value="midi"><ListMusic/> MIDI</Tabs.Trigger>
-							<Tabs.Trigger value="lights"><BellRing/> Lights</Tabs.Trigger>
+							<Tabs.Trigger value="mix">
+								<SlidersHorizontal /> Mix
+							</Tabs.Trigger>
+							<Tabs.Trigger value="midi">
+								<ListMusic /> MIDI
+							</Tabs.Trigger>
+							<Tabs.Trigger value="lights">
+								<BellRing /> Lights
+							</Tabs.Trigger>
 						</Tabs.List>
 
 						<Tabs.Content value="mix" class="tabs__content">
 							<div class="shortcut-strip shortcut-strip--mixer" aria-hidden="true">
-								<span class="shortcut-strip__target" style={{"--piece-color": activePiece()?.color ?? "var(--accent)"}}>
-									<i/>
+								<span
+									class="shortcut-strip__target"
+									style={{ "--piece-color": activePiece()?.color ?? "var(--accent)" }}
+								>
+									<i />
 									{activePiece()?.label ?? "Kick"}
 								</span>
-								<span><ShortcutKeycap hint={KEYBOARD_SHORTCUT_HINTS.toggleMute}/> Mute</span>
-								<span><ShortcutKeycap hint={KEYBOARD_SHORTCUT_HINTS.toggleSolo}/> Solo</span>
-								<span><ShortcutKeycap hint={KEYBOARD_SHORTCUT_HINTS.adjustVolumeDown}/><ShortcutKeycap hint={KEYBOARD_SHORTCUT_HINTS.adjustVolumeUp}/> Level</span>
+								<span>
+									<ShortcutKeycap hint={KEYBOARD_SHORTCUT_HINTS.toggleMute} /> Mute
+								</span>
+								<span>
+									<ShortcutKeycap hint={KEYBOARD_SHORTCUT_HINTS.toggleSolo} /> Solo
+								</span>
+								<span>
+									<ShortcutKeycap hint={KEYBOARD_SHORTCUT_HINTS.adjustVolumeDown} />
+									<ShortcutKeycap hint={KEYBOARD_SHORTCUT_HINTS.adjustVolumeUp} /> Level
+								</span>
 							</div>
 							<div class="mixer-list">
 								<For each={props.kit.pieces}>
@@ -63,14 +88,15 @@ export function MixerPanel(props: MixerPanelProps) {
 												class="mixer-row"
 												classList={{
 													"is-active-lane": props.activePieceId === piece.id,
-													"is-keyboard-target": props.activePieceId === piece.id && props.activeInputSource === "keyboard",
+													"is-keyboard-target":
+														props.activePieceId === piece.id && props.activeInputSource === "keyboard",
 													"is-lane-inactive": !status().audible,
 													"is-lane-muted": status().reason === "muted",
 													"is-lane-silent": status().reason === "silent",
 													"is-lane-solo-excluded": status().reason === "solo-excluded",
 												}}
 												data-lane-status={status().reason}
-												style={{"--piece-color": piece.color}}
+												style={{ "--piece-color": piece.color }}
 												tabIndex={0}
 												onClick={() => props.onFocusLane(piece.id)}
 												onFocusIn={() => props.onFocusLane(piece.id)}
@@ -81,18 +107,18 @@ export function MixerPanel(props: MixerPanelProps) {
 													<span>{piece.label}</span>
 													<div>
 														<button
-															classList={{"is-active": lane().muted}}
+															classList={{ "is-active": lane().muted }}
 															aria-keyshortcuts={KEYBOARD_SHORTCUT_HINTS.toggleMute.aria}
 															aria-label={`Mute ${piece.label} (${KEYBOARD_SHORTCUT_HINTS.toggleMute.label})`}
-															onClick={() => props.onLaneChange(piece.id, {muted: !lane().muted})}
+															onClick={() => props.onLaneChange(piece.id, { muted: !lane().muted })}
 														>
 															M
 														</button>
 														<button
-															classList={{"is-active": lane().soloed}}
+															classList={{ "is-active": lane().soloed }}
 															aria-keyshortcuts={KEYBOARD_SHORTCUT_HINTS.toggleSolo.aria}
 															aria-label={`Solo ${piece.label} (${KEYBOARD_SHORTCUT_HINTS.toggleSolo.label})`}
-															onClick={() => props.onLaneChange(piece.id, {soloed: !lane().soloed})}
+															onClick={() => props.onLaneChange(piece.id, { soloed: !lane().soloed })}
 														>
 															S
 														</button>
@@ -105,7 +131,7 @@ export function MixerPanel(props: MixerPanelProps) {
 													max={1}
 													step={0.01}
 													valueText={formatPercent(lane().volume)}
-													onChange={(volume) => props.onLaneChange(piece.id, {volume})}
+													onChange={(volume) => props.onLaneChange(piece.id, { volume })}
 												/>
 											</div>
 										);
@@ -132,7 +158,9 @@ export function MixerPanel(props: MixerPanelProps) {
 											{(note) => (
 												<div class="unmapped-row">
 													<span>{note.noteName}</span>
-													<small>ch {note.channel + 1} · {note.count}x</small>
+													<small>
+														ch {note.channel + 1} · {note.count}x
+													</small>
 												</div>
 											)}
 										</For>
@@ -148,9 +176,11 @@ export function MixerPanel(props: MixerPanelProps) {
 										{(event) => {
 											const piece = props.kit.pieces.find((candidate) => candidate.id === event.pieceId);
 											return (
-												<div class="light-feed__row" style={{"--piece-color": event.color}}>
+												<div class="light-feed__row" style={{ "--piece-color": event.color }}>
 													<span>{piece?.label ?? event.pieceId}</span>
-													<small>{formatPercent(event.intensity)} · {formatTime(event.atMs)}</small>
+													<small>
+														{formatPercent(event.intensity)} · {formatTime(event.atMs)}
+													</small>
 												</div>
 											);
 										}}
@@ -164,10 +194,14 @@ export function MixerPanel(props: MixerPanelProps) {
 		>
 			<aside class="inspector-panel panel-rail" aria-label="Inspector collapsed">
 				<button class="panel-rail__button" aria-label="Expand inspector" onClick={props.onToggleCollapse}>
-					<PanelRightOpen/>
+					<PanelRightOpen />
 				</button>
-				<div class="panel-rail__active" style={{"--piece-color": activePiece()?.color ?? "var(--accent)"}} aria-hidden="true">
-					<i/>
+				<div
+					class="panel-rail__active"
+					style={{ "--piece-color": activePiece()?.color ?? "var(--accent)" }}
+					aria-hidden="true"
+				>
+					<i />
 				</div>
 			</aside>
 		</Show>

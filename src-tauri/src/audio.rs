@@ -1,6 +1,6 @@
 use crate::dto::{
     default_lane_states, lane_state_array, normalize_speed, AudioDiagnosticsDto, CompiledSession,
-    LaneStateDto, LaneStateMapDto, LightPulseDto, PieceId, PlaybackControlsDto,
+    LaneStateDto, LaneStateMapDto, LightPulseDto, MetronomeTickDto, PieceId, PlaybackControlsDto,
     PlaybackControlsPatchDto, PlaybackMode, PlaybackStatusDto, PIECE_COUNT,
 };
 use crate::kit::{choke_targets, is_lane_audible, piece, SampleBank};
@@ -15,6 +15,7 @@ use tauri::{AppHandle, Emitter};
 
 const COMMAND_CAPACITY: usize = 256;
 const LIGHT_CAPACITY: usize = 4096;
+const METRONOME_TICK_CAPACITY: usize = 1024;
 const MAX_SAMPLE_VOICES: usize = 96;
 const MAX_CLICK_VOICES: usize = 8;
 const STATUS_INTERVAL: Duration = Duration::from_millis(16);
@@ -38,10 +39,6 @@ enum AudioCommand {
     },
     SetControls(PlaybackControlsPatchDto),
     SetLaneStates([LaneStateDto; PIECE_COUNT]),
-    SetLaneState {
-        piece_id: PieceId,
-        state: LaneStateDto,
-    },
     Audition {
         piece_id: PieceId,
         velocity: f32,
@@ -53,6 +50,11 @@ struct AudioLight {
     piece_id: PieceId,
     note: u8,
     velocity: f32,
+    at_position_ms: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AudioMetronomeTick {
     at_position_ms: f64,
 }
 
@@ -189,22 +191,6 @@ impl AudioBackend {
         Ok(self.shared.status())
     }
 
-    pub fn set_lane_state(
-        &self,
-        piece_id: PieceId,
-        state: LaneStateDto,
-    ) -> Result<PlaybackStatusDto, String> {
-        self.send(AudioCommand::SetLaneState {
-            piece_id,
-            state: LaneStateDto {
-                volume: state.volume.clamp(0.0, 1.0),
-                muted: state.muted,
-                soloed: state.soloed,
-            },
-        })?;
-        Ok(self.shared.status())
-    }
-
     pub fn audition(&self, piece_id: PieceId, velocity: f32) -> Result<(), String> {
         self.send(AudioCommand::Audition {
             piece_id,
@@ -257,6 +243,7 @@ impl AudioRuntime {
         let shared = Arc::new(SharedStatus::new(sample_rate, channels));
         let (tx, rx) = bounded(COMMAND_CAPACITY);
         let (light_tx, light_rx) = bounded(LIGHT_CAPACITY);
+        let (metronome_tick_tx, metronome_tick_rx) = bounded(METRONOME_TICK_CAPACITY);
         let (stream, buffer_size) = build_stream(
             &device,
             supported.sample_format(),
@@ -264,6 +251,7 @@ impl AudioRuntime {
             sample_bank,
             rx,
             light_tx,
+            metronome_tick_tx,
             shared.clone(),
         )?;
         shared.buffer_size.store(buffer_size, Ordering::Relaxed);
@@ -271,7 +259,7 @@ impl AudioRuntime {
             .play()
             .map_err(|error| format!("Could not start the audio stream: {error}"))?;
         Box::leak(Box::new(stream));
-        spawn_status_thread(app, shared.clone(), light_rx);
+        spawn_status_thread(app, shared.clone(), light_rx, metronome_tick_rx);
         Ok(Self { tx, shared })
     }
 }
@@ -283,6 +271,7 @@ fn build_stream(
     sample_bank: Arc<SampleBank>,
     rx: Receiver<AudioCommand>,
     light_tx: Sender<AudioLight>,
+    metronome_tick_tx: Sender<AudioMetronomeTick>,
     shared: Arc<SharedStatus>,
 ) -> Result<(Stream, u32), String> {
     let attempts = [Some(128_u32), Some(256_u32), None];
@@ -300,6 +289,7 @@ fn build_stream(
                 sample_bank.clone(),
                 rx.clone(),
                 light_tx.clone(),
+                metronome_tick_tx.clone(),
                 shared.clone(),
             ),
             SampleFormat::I16 => build_stream_for_format::<i16>(
@@ -308,6 +298,7 @@ fn build_stream(
                 sample_bank.clone(),
                 rx.clone(),
                 light_tx.clone(),
+                metronome_tick_tx.clone(),
                 shared.clone(),
             ),
             SampleFormat::U16 => build_stream_for_format::<u16>(
@@ -316,6 +307,7 @@ fn build_stream(
                 sample_bank.clone(),
                 rx.clone(),
                 light_tx.clone(),
+                metronome_tick_tx.clone(),
                 shared.clone(),
             ),
             other => Err(format!("Unsupported audio sample format: {other:?}")),
@@ -336,6 +328,7 @@ fn build_stream_for_format<T>(
     sample_bank: Arc<SampleBank>,
     rx: Receiver<AudioCommand>,
     light_tx: Sender<AudioLight>,
+    metronome_tick_tx: Sender<AudioMetronomeTick>,
     shared: Arc<SharedStatus>,
 ) -> Result<Stream, String>
 where
@@ -343,7 +336,14 @@ where
 {
     let channels = usize::from(config.channels.max(1));
     let sample_rate = f64::from(config.sample_rate.0);
-    let mut callback = CallbackState::new(sample_rate, sample_bank, rx, light_tx, shared.clone());
+    let mut callback = CallbackState::new(
+        sample_rate,
+        sample_bank,
+        rx,
+        light_tx,
+        metronome_tick_tx,
+        shared.clone(),
+    );
     let error_shared = shared;
     device
         .build_output_stream(
@@ -362,6 +362,11 @@ struct Voice {
     piece_id: PieceId,
     position: usize,
     gain: f32,
+    // Fade-out envelope. While fade_total > 0, the voice's gain is multiplied
+    // by (fade_remaining / fade_total) and fade_remaining decrements per frame.
+    // The voice is dropped once fade_remaining reaches zero.
+    fade_remaining: u32,
+    fade_total: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -371,13 +376,21 @@ struct ClickVoice {
     remaining: u32,
     total: u32,
     gain: f32,
+    // Linear attack ramp to prevent click on transient onset.
+    attack_remaining: u32,
+    attack_total: u32,
 }
+
+const VOICE_FADE_CHOKE_MS: f32 = 10.0;
+const CLICK_ATTACK_MS: f32 = 2.0;
+const LIMITER_KNEE: f32 = 0.85;
 
 struct CallbackState {
     sample_rate: f64,
     sample_bank: Arc<SampleBank>,
     rx: Receiver<AudioCommand>,
     light_tx: Sender<AudioLight>,
+    metronome_tick_tx: Sender<AudioMetronomeTick>,
     shared: Arc<SharedStatus>,
     session: Option<Arc<CompiledSession>>,
     controls: PlaybackControlsDto,
@@ -400,6 +413,7 @@ impl CallbackState {
         sample_bank: Arc<SampleBank>,
         rx: Receiver<AudioCommand>,
         light_tx: Sender<AudioLight>,
+        metronome_tick_tx: Sender<AudioMetronomeTick>,
         shared: Arc<SharedStatus>,
     ) -> Self {
         Self {
@@ -407,6 +421,7 @@ impl CallbackState {
             sample_bank,
             rx,
             light_tx,
+            metronome_tick_tx,
             shared,
             session: None,
             controls: PlaybackControlsDto::default(),
@@ -470,9 +485,6 @@ impl CallbackState {
                     self.publish_status();
                 }
                 AudioCommand::SetLaneStates(lane_states) => self.lane_states = lane_states,
-                AudioCommand::SetLaneState { piece_id, state } => {
-                    self.lane_states[piece_id.index()] = state;
-                }
                 AudioCommand::Audition { piece_id, velocity } => self.trigger_piece(
                     piece_id,
                     velocity.clamp(0.0, 1.0),
@@ -557,6 +569,8 @@ impl CallbackState {
         let (mut left, mut right) = self.mix_active_voices();
         left *= self.controls.master_volume;
         right *= self.controls.master_volume;
+        left = soft_limit(left);
+        right = soft_limit(right);
 
         if matches!(self.mode, PlaybackMode::Playing) {
             self.advance_playhead();
@@ -600,8 +614,8 @@ impl CallbackState {
                 let loop_len = (loop_end - loop_start).max(MIN_LOOP_LENGTH_MS);
                 let overrun = (self.position_ms - loop_end) % loop_len;
                 self.position_ms = loop_start + overrun;
-                self.event_index = self.hit_index_at_or_after(self.position_ms);
-                self.next_metronome_ms = self.next_beat_at_or_after(self.position_ms);
+                self.event_index = self.hit_index_at_or_after(loop_start);
+                self.next_metronome_ms = self.next_beat_at_or_after(loop_start);
             }
         } else if let Some(session) = &self.session {
             if self.position_ms >= session.dto.duration_ms {
@@ -614,6 +628,10 @@ impl CallbackState {
     }
 
     fn trigger_due_events(&mut self) {
+        // Cloning the Arc here is intentional: a borrow conflict with the
+        // `&mut self` call to trigger_piece() below otherwise prevents
+        // iteration. The clone is one atomic fetch_add per call (~5ns at this
+        // call rate) and keeps the trigger path real-time-safe.
         let Some(session) = self.session.clone() else {
             return;
         };
@@ -644,7 +662,11 @@ impl CallbackState {
 
         let beat_ms = self.beat_ms();
         while self.next_metronome_ms <= self.position_ms + 0.0001 {
+            let at_position_ms = self.next_metronome_ms;
             self.trigger_click(1046.5, 0.03, 0.26);
+            let _ = self
+                .metronome_tick_tx
+                .try_send(AudioMetronomeTick { at_position_ms });
             self.next_metronome_ms += beat_ms;
         }
     }
@@ -678,6 +700,8 @@ impl CallbackState {
             piece_id,
             position: 0,
             gain,
+            fade_remaining: 0,
+            fade_total: 0,
         });
 
         let light = AudioLight {
@@ -694,12 +718,11 @@ impl CallbackState {
     }
 
     fn stop_piece_voices(&mut self, piece_id: PieceId) {
-        let mut index = 0;
-        while index < self.sample_voices.len() {
-            if self.sample_voices[index].piece_id == piece_id {
-                self.sample_voices.swap_remove(index);
-            } else {
-                index += 1;
+        let fade_samples = ((self.sample_rate as f32) * VOICE_FADE_CHOKE_MS / 1000.0) as u32;
+        let fade_samples = fade_samples.max(1);
+        for voice in &mut self.sample_voices {
+            if voice.piece_id == piece_id {
+                start_fade(voice, fade_samples);
             }
         }
     }
@@ -709,12 +732,17 @@ impl CallbackState {
             self.click_voices.remove(0);
         }
         let total = (self.sample_rate as f32 * seconds).max(1.0) as u32;
+        let attack_total = ((self.sample_rate as f32) * CLICK_ATTACK_MS / 1000.0)
+            .max(1.0) as u32;
+        let attack_total = attack_total.min(total);
         self.click_voices.push(ClickVoice {
             phase: 0.0,
             phase_step: frequency / self.sample_rate as f32,
             remaining: total,
             total,
             gain,
+            attack_remaining: attack_total,
+            attack_total,
         });
     }
 
@@ -726,14 +754,25 @@ impl CallbackState {
         while voice_index < self.sample_voices.len() {
             let voice = self.sample_voices[voice_index];
             let sample = self.sample_bank.get(voice.piece_id);
-            if voice.position >= sample.len() {
+            let fade_done = voice.fade_total > 0 && voice.fade_remaining == 0;
+            if voice.position >= sample.len() || fade_done {
                 self.sample_voices.swap_remove(voice_index);
                 continue;
             }
 
-            left += sample.left[voice.position] * voice.gain;
-            right += sample.right[voice.position] * voice.gain;
-            self.sample_voices[voice_index].position += 1;
+            let fade_factor = if voice.fade_total > 0 {
+                voice.fade_remaining as f32 / voice.fade_total as f32
+            } else {
+                1.0
+            };
+            let g = voice.gain * fade_factor;
+            left += sample.left[voice.position] * g;
+            right += sample.right[voice.position] * g;
+            let v = &mut self.sample_voices[voice_index];
+            v.position += 1;
+            if v.fade_total > 0 && v.fade_remaining > 0 {
+                v.fade_remaining -= 1;
+            }
             voice_index += 1;
         }
 
@@ -746,12 +785,21 @@ impl CallbackState {
             }
 
             let decay = click.remaining as f32 / click.total.max(1) as f32;
-            let square = if click.phase < 0.5 { 1.0 } else { -1.0 };
-            let value = square * click.gain * decay;
+            let attack = if click.attack_total > 0 {
+                let elapsed = click.attack_total - click.attack_remaining;
+                elapsed as f32 / click.attack_total as f32
+            } else {
+                1.0
+            };
+            let osc = (click.phase * std::f32::consts::TAU).sin();
+            let value = osc * click.gain * decay * attack;
             left += value;
             right += value;
             click.phase = (click.phase + click.phase_step) % 1.0;
             click.remaining -= 1;
+            if click.attack_remaining > 0 {
+                click.attack_remaining -= 1;
+            }
             click_index += 1;
         }
 
@@ -987,7 +1035,12 @@ fn mode_to_u8(mode: PlaybackMode) -> u8 {
     }
 }
 
-fn spawn_status_thread(app: AppHandle, shared: Arc<SharedStatus>, light_rx: Receiver<AudioLight>) {
+fn spawn_status_thread(
+    app: AppHandle,
+    shared: Arc<SharedStatus>,
+    light_rx: Receiver<AudioLight>,
+    metronome_tick_rx: Receiver<AudioMetronomeTick>,
+) {
     std::thread::spawn(move || {
         let mut diagnostics_tick = 0_u8;
         loop {
@@ -1009,6 +1062,17 @@ fn spawn_status_thread(app: AppHandle, shared: Arc<SharedStatus>, light_rx: Rece
                 let _ = app.emit("audio:lights", lights);
             }
 
+            let mut metronome_ticks = Vec::new();
+            while let Ok(tick) = metronome_tick_rx.try_recv() {
+                metronome_ticks.push(MetronomeTickDto {
+                    at_position_ms: tick.at_position_ms,
+                });
+            }
+
+            if !metronome_ticks.is_empty() {
+                let _ = app.emit("audio:metronome-ticks", metronome_ticks);
+            }
+
             let _ = app.emit("audio:status", shared.status());
             if diagnostics_tick == 0 {
                 let _ = app.emit("audio:diagnostics", shared.diagnostics());
@@ -1024,6 +1088,37 @@ fn now_ns() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos().min(u128::from(u64::MAX)) as u64)
         .unwrap_or(0)
+}
+
+// Begin a linear fade-out on `voice` over `samples` frames. If the voice is already
+// fading at a faster rate, leave it alone — re-arming a slower fade would let a
+// choked voice ring out longer than intended.
+fn start_fade(voice: &mut Voice, samples: u32) {
+    let samples = samples.max(1);
+    if voice.fade_total > 0 && voice.fade_remaining < samples {
+        return;
+    }
+    voice.fade_total = samples;
+    voice.fade_remaining = samples;
+}
+
+// Soft-knee limiter on the master bus. Below LIMITER_KNEE the signal is unchanged;
+// above it, the excess is shaped through (1 - exp(-x)) so the ceiling at 1.0 is
+// approached asymptotically and the hard `clamp` in render() never has to act.
+// Cost is one branch + one exp per channel — negligible at audio rates.
+fn soft_limit(value: f32) -> f32 {
+    let abs = value.abs();
+    if abs <= LIMITER_KNEE {
+        return value;
+    }
+    let over = abs - LIMITER_KNEE;
+    let head = 1.0 - LIMITER_KNEE;
+    let shaped = LIMITER_KNEE + head * (1.0 - (-over / head).exp());
+    if value >= 0.0 {
+        shaped
+    } else {
+        -shaped
+    }
 }
 
 #[cfg(test)]
@@ -1065,11 +1160,13 @@ mod tests {
         let (tx, rx) = bounded(8);
         drop(tx);
         let (light_tx, _light_rx) = bounded(8);
+        let (metronome_tick_tx, _metronome_tick_rx) = bounded(8);
         CallbackState::new(
             1000.0,
             Arc::new(SampleBank::load(1000).expect("samples decode")),
             rx,
             light_tx,
+            metronome_tick_tx,
             Arc::new(SharedStatus::new(1000, 2)),
         )
     }
@@ -1118,6 +1215,58 @@ mod tests {
     }
 
     #[test]
+    fn loop_wrap_triggers_hit_at_loop_start_after_overrun() {
+        let mut state = test_state();
+        state.play(
+            test_session(),
+            999.0,
+            PlaybackControlsDto {
+                speed: 2.0,
+                loop_enabled: true,
+                loop_start_ms: 500.0,
+                loop_end_ms: 1000.0,
+                ..PlaybackControlsDto::default()
+            },
+            default_lane_states(),
+        );
+
+        state.next_frame();
+        assert!((state.position_ms - 501.0).abs() < 0.01);
+
+        state.next_frame();
+        assert!(state
+            .sample_voices
+            .iter()
+            .any(|voice| voice.piece_id == PieceId::ClosedHat));
+    }
+
+    #[test]
+    fn loop_wrap_keeps_metronome_click_at_loop_start_after_overrun() {
+        let mut state = test_state();
+        state.play(
+            test_session(),
+            999.0,
+            PlaybackControlsDto {
+                speed: 2.0,
+                loop_enabled: true,
+                loop_start_ms: 500.0,
+                loop_end_ms: 1000.0,
+                metronome_enabled: true,
+                ..PlaybackControlsDto::default()
+            },
+            default_lane_states(),
+        );
+
+        state.next_frame();
+        assert!((state.position_ms - 501.0).abs() < 0.01);
+        assert!((state.next_metronome_ms - 500.0).abs() < 0.01);
+
+        state.next_frame();
+        assert!(!state.click_voices.is_empty());
+        assert!((state.next_metronome_ms - 1000.0).abs() < 0.01);
+    }
+
+    #[test]
     fn muted_lanes_do_not_spawn_voices() {
         let mut state = test_state();
         let mut lanes = default_lane_states();
@@ -1138,5 +1287,54 @@ mod tests {
         assert_eq!(status.duration_ms, 0.0);
         assert_eq!(status.loop_start_ms, 0.0);
         assert_eq!(status.loop_end_ms, 0.0);
+    }
+
+    #[test]
+    fn soft_limit_passes_quiet_signals() {
+        assert!((soft_limit(0.5) - 0.5).abs() < 1e-6);
+        assert!((soft_limit(-0.5) + 0.5).abs() < 1e-6);
+        assert!((soft_limit(LIMITER_KNEE) - LIMITER_KNEE).abs() < 1e-6);
+    }
+
+    #[test]
+    fn soft_limit_clamps_loud_signals_at_or_below_one() {
+        for value in [1.5_f32, 2.0, 5.0, 100.0] {
+            let limited = soft_limit(value);
+            assert!(limited > LIMITER_KNEE);
+            assert!(limited <= 1.0, "expected {limited} <= 1.0 for input {value}");
+            let neg = soft_limit(-value);
+            assert!(neg < -LIMITER_KNEE);
+            assert!(neg >= -1.0);
+        }
+    }
+
+    #[test]
+    fn start_fade_arms_envelope() {
+        let mut voice = Voice {
+            piece_id: PieceId::Kick,
+            position: 100,
+            gain: 1.0,
+            fade_remaining: 0,
+            fade_total: 0,
+        };
+        start_fade(&mut voice, 480);
+        assert_eq!(voice.fade_total, 480);
+        assert_eq!(voice.fade_remaining, 480);
+    }
+
+    #[test]
+    fn start_fade_does_not_extend_active_faster_fade() {
+        let mut voice = Voice {
+            piece_id: PieceId::Kick,
+            position: 100,
+            gain: 1.0,
+            fade_remaining: 100,
+            fade_total: 240,
+        };
+        // Already mid-fade with 100 frames left; a new 480-frame fade would slow it
+        // down — must be ignored.
+        start_fade(&mut voice, 480);
+        assert_eq!(voice.fade_remaining, 100);
+        assert_eq!(voice.fade_total, 240);
     }
 }
